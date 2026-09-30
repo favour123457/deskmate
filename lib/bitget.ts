@@ -7,6 +7,7 @@ const CRYPTO = new Set([
   "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "TON", "AVAX", "LINK", "DOT", "TRX",
   "LTC", "BCH", "SUI", "PEPE", "SHIB", "ARB", "OP", "BGB", "NEAR", "APT", "HYPE", "USDC",
 ]);
+
 const US_TECH = new Set([
   "NVDA", "AMD", "AAPL", "MSFT", "GOOGL", "GOOG", "META", "AMZN", "TSLA", "NFLX", "AVGO",
   "ORCL", "CRM", "ADBE", "INTC", "QCOM", "TSM", "PLTR", "COIN", "MSTR", "SMCI", "ARM", "MU",
