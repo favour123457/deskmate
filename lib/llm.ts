@@ -55,12 +55,20 @@ export async function chat(p: Provider, messages: ChatMessage[], tools?: ToolDef
     body.tools = tools;
     body.tool_choice = "auto";
   }
-  const res = await fetch(`${p.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.apiKey}` },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS) || 35_000),
-  });
+  const send = () =>
+    fetch(`${p.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.apiKey}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS) || 35_000),
+    });
+  let res = await send();
+  // Overloaded / rate-limited: one retry after 1-2 s before the caller falls back to the next provider.
+  if (res.status === 503 || res.status === 429) {
+    await res.body?.cancel();
+    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+    res = await send();
+  }
   const text = await res.text();
   if (!res.ok) throw new LlmError(`${p.id} ${res.status}: ${text.slice(0, 300)}`, res.status);
   const json = JSON.parse(text);

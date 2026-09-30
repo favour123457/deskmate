@@ -33,10 +33,11 @@ try {
 
   const syms = await j(`${BITGET}/api/v2/spot/public/symbols`);
   const rtokens = (syms.body?.data || [])
-    .filter((s) => /^R[A-Z]{1,6}USDT$/.test(s.symbol) && s.status === "online")
-    .map((s) => "r" + s.symbol.slice(1, -4));
+    // rTokens have a lower-case "r" base coin (rNVDA) and areaSymbol "yes"; plain crypto like RENDER/RSR does not.
+    .filter((s) => s.status === "online" && s.quoteCoin === "USDT" && s.areaSymbol === "yes" && /^r[A-Z0-9.]{1,8}$/.test(s.baseCoin))
+    .map((s) => s.baseCoin);
   if (rtokens.length) {
-    ok(`${rtokens.length} tokenized-stock-looking spot pairs online`);
+    ok(`${rtokens.length} rToken (tokenized US stock) spot pairs online`);
     info(rtokens.slice(0, 60).join(", "));
   } else bad("No R*USDT spot pairs found — check the symbol naming on bitget.com");
 
@@ -66,7 +67,17 @@ try {
   info("The app still works without it (prices + maths), but loses fundamentals/news.");
 }
 
-console.log("\n3) LLM providers");
+console.log("\n3) Finnhub backup (earnings dates + company news)");
+if (!process.env.FINNHUB_API_KEY) info("FINNHUB_API_KEY not set — skipped (optional; free key at https://finnhub.io/register)");
+else {
+  try {
+    const r = await j("https://finnhub.io/api/v1/company-news?symbol=NVDA&from=" + new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10) + "&to=" + new Date().toISOString().slice(0, 10), { headers: { "X-Finnhub-Token": process.env.FINNHUB_API_KEY } });
+    if (r.status === 200 && Array.isArray(r.body)) ok(`works — ${r.body.length} NVDA news items in the last 7 days`);
+    else bad(`HTTP ${r.status}: ${JSON.stringify(r.body).slice(0, 160)}`);
+  } catch (e) { bad(`Finnhub unreachable: ${e.message}`); }
+}
+
+console.log("\n4) LLM providers");
 const PRESETS = {
   qwen: ["BITGET_QWEN_API_KEY", "https://hackathon.bitgetops.com/v1", "qwen3.8-max"],
   gemini: ["GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.5-flash"],

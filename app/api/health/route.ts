@@ -1,4 +1,5 @@
 import { bitgetReachable } from "@/lib/bitget";
+import { finnhubEnabled } from "@/lib/finnhub";
 import { providers } from "@/lib/llm";
 import { mcpLastError, mcpTools } from "@/lib/mcp";
 
@@ -10,6 +11,7 @@ export async function GET() {
   return Response.json({
     bitgetRest: bitget,
     bitgetMcp: { ok: tools.length > 0, tools: tools.map((t) => t.name), error: mcpLastError() },
+    finnhub: { configured: finnhubEnabled() },
     llm: providers().map((p) => ({ id: p.id, model: p.model })),
   });
 }

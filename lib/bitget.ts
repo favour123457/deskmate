@@ -27,7 +27,7 @@ function clean(raw: string) {
   return raw.trim().replace(/[\s/_-]/g, "").replace(/USDT$/i, "");
 }
 
-function underlying(raw: string): string {
+export function underlying(raw: string): string {
   const c = clean(raw);
   // "rNVDA" (lower-case r prefix) means tokenized stock
   if (/^r[A-Z0-9]{1,8}$/.test(c)) return c.slice(1);

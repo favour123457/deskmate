@@ -1,12 +1,13 @@
 // The research loop: question -> LLM picks tools -> tools return real data/maths -> structured insight.
 // The LLM never places orders and never does arithmetic itself; the human makes the call.
 import { chat, providers, type ChatMessage, type Provider, type ToolCall, type ToolDef } from "./llm";
+import { earningsAndNews, finnhubEnabled } from "./finnhub";
 import { callMcp, mcpLastError, mcpTools, type McpTool } from "./mcp";
 import { usMarketStatus } from "./market-clock";
 import { priceHistorySummary, simulateTrade, snapshot, type Snapshot } from "./portfolio";
 import type { Holding, Insight, PortfolioMetrics, Risk, StreamEvent, TrailStep, Verdict } from "./types";
 
-const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS || 7);
+const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS || 4);
 const MCP_DIRECT_MAX = Number(process.env.MCP_DIRECT_MAX || 20);
 const RESULT_CHARS = Number(process.env.TOOL_RESULT_CHARS || 3500);
 
@@ -164,7 +165,28 @@ function internalTools(holdings: Holding[]): ToolImpl[] {
       },
       run: async (a) => round(await priceHistorySummary(String(a.symbol))),
     },
+    ...(finnhubEnabled() ? [finnhubTool()] : []),
   ];
+}
+
+function finnhubTool(): ToolImpl {
+  return {
+    source: "Finnhub",
+    def: {
+      type: "function",
+      function: {
+        name: "get_earnings_and_news",
+        description:
+          "Finnhub (backup, non-Bitget source): next and most recent earnings date (with EPS/revenue estimates) and the last 7 days of company news headlines for a US stock or rToken (e.g. rNVDA -> NVDA). US stocks only. Prefer Bitget MCP data tools when they are connected.",
+        parameters: {
+          type: "object",
+          properties: { symbol: { type: "string", description: "e.g. rNVDA, TSLA" } },
+          required: ["symbol"],
+        },
+      },
+    },
+    run: async (a) => round(await earningsAndNews(String(a.symbol))),
+  };
 }
 
 async function mcpToolImpls(tools: McpTool[]): Promise<{ impls: ToolImpl[]; catalog: string | null }> {
@@ -238,7 +260,7 @@ function summarize(result: unknown): string {
 }
 
 // ---------- prompt ----------
-function systemPrompt(snap: Snapshot, profile: string | undefined, mcpCatalog: string | null, mcpNote: string) {
+function systemPrompt(snap: Snapshot, profile: string | undefined, mcpCatalog: string | null, mcpNote: string, priceStats: unknown[]) {
   const clock = usMarketStatus();
   return `You are Deskmate, an AI research analyst on a trading desk for small retail traders who hold Bitget tokenized US stocks (rTokens such as rNVDA, which trade 7x24) alongside crypto.
 You RESEARCH and EXPLAIN. The human trader makes the final decision. You never place orders.
@@ -248,17 +270,20 @@ CONTEXT
 - Trader profile: ${profile?.trim() || "student / small retail trader, a few hundred to a few thousand USD, cannot watch the US session live (e.g. based in Lagos, UTC+1)."}
 - Current portfolio (computed in code from live Bitget data, trust these numbers):
 ${JSON.stringify(metricsForPrompt(snap.metrics))}
+- Price stats for each held instrument (computed in code from Bitget daily candles; same units as above):
+${JSON.stringify(priceStats)}
 ${snap.errors.length ? `- Data problems: ${snap.errors.join("; ")}` : ""}
 - ${mcpNote}
+- ${finnhubEnabled() ? "Finnhub backup is available via get_earnings_and_news (earnings dates + company news for US stocks). Name Finnhub as the source when you use it." : "No Finnhub backup configured."}
 ${mcpCatalog ? `\nBITGET US-STOCK DATA CATALOG (use bitget_tool_schema then bitget_data):\n${mcpCatalog}\n` : ""}
 HOW TO WORK
-1. Plan which facts you need. Use tools to get them: simulate_trade for ANY proposed buy/sell/size question; get_price_history for price context; Bitget MCP data tools for fundamentals, earnings dates, analyst targets, news and sentiment.
+1. Plan which facts you need. Use tools to get them: simulate_trade for ANY proposed buy/sell/size question; Bitget MCP data tools for fundamentals, earnings dates, analyst targets, news and sentiment${finnhubEnabled() ? " (get_earnings_and_news from Finnhub if the MCP is down or lacks the data)" : ""}. Price stats for held instruments are already above — call get_price_history only for instruments the trader does NOT hold. You have at most ${MAX_STEPS} rounds, so request all the tools you need in parallel in one round.
 2. Never do arithmetic or statistics yourself — quote numbers returned by tools or given above. Weights, returns, volatility and drawdowns in the data are fractions (0.44 = 44%); always present them to the trader as percentages, and money as $ amounts. If data is missing, say so plainly; never invent numbers, dates or news.
 3. Tie everything to THIS trader's portfolio: concentration, overlap/correlation with what they hold, weekend/overnight exposure, event risk (e.g. earnings before the next US open).
 4. Be specific and short. Suggest a size or hedge only when the data supports it, and only after checking it with simulate_trade (use into_symbol for "trim X, move into Y"). Quote the simulated after-numbers in "hedge" and "impact"; never state a target weight you did not simulate.
 5. Round for the reader: percentages to 1 decimal, correlations and beta to 2 decimals, dollars to whole $ (VaR to cents is fine).
 6. "watch" items must be concrete: a price level, a date, or a metric from the tools. If earnings dates or news could not be fetched, say that in "watch" instead of writing generic items.
-7. Confidence: "high" only when the key facts for the question came back from tools. If the Bitget MCP data server is unavailable, confidence is at most "medium".
+7. Confidence: "high" only when the key facts for the question came back from tools. If neither the Bitget MCP data server nor Finnhub returned earnings/news data, confidence is at most "medium".
 
 FINAL ANSWER — reply with ONLY one JSON object, no prose outside it:
 {
@@ -316,6 +341,19 @@ export async function runAgent(input: AskInput, emit: Emit) {
     summary: `${snap.metrics.positions.length} positions, ${usd(snap.metrics.totalUsd)}, ${snap.metrics.window?.days ?? 0} days of history${snap.errors.length ? ` — ${snap.errors.length} issue(s)` : ""}`,
   });
 
+  const t1 = Date.now();
+  const priceStats = (
+    await Promise.all(snap.metrics.positions.map((p) => priceHistorySummary(p.display).then(round).catch(() => null)))
+  ).filter(Boolean);
+  step({
+    tool: "price_stats",
+    source: "Bitget REST",
+    args: { instruments: snap.metrics.positions.map((p) => p.display) },
+    ok: priceStats.length === snap.metrics.positions.length,
+    ms: Date.now() - t1,
+    summary: `returns, 30d range and volatility for ${priceStats.length}/${snap.metrics.positions.length} held instruments`,
+  });
+
   const { impls: mcpImpls, catalog } = await mcpToolImpls(mcpList);
   const mcpNote = mcpList.length
     ? `Bitget MCP data server connected (${mcpList.length} tools).`
@@ -332,7 +370,7 @@ export async function runAgent(input: AskInput, emit: Emit) {
     return;
   }
 
-  const messages: ChatMessage[] = [{ role: "system", content: systemPrompt(snap, input.profile, catalog, mcpNote) }];
+  const messages: ChatMessage[] = [{ role: "system", content: systemPrompt(snap, input.profile, catalog, mcpNote, priceStats) }];
   for (const h of (input.history || []).slice(-4)) {
     messages.push({ role: "user", content: h.question });
     messages.push({ role: "assistant", content: h.answer });
@@ -342,6 +380,8 @@ export async function runAgent(input: AskInput, emit: Emit) {
   let pi = 0;
   let simulated = false;
   let hedgeChecked = false;
+  let eventDataOk = false; // earnings/news came back from Bitget MCP or Finnhub
+  let limit = MAX_STEPS;
   const call = async (withTools: boolean) => {
     let lastErr: Error | null = null;
     while (pi < provs.length) {
@@ -358,9 +398,9 @@ export async function runAgent(input: AskInput, emit: Emit) {
   };
 
   try {
-    for (let i = 0; i < MAX_STEPS; i++) {
+    for (let i = 0; i < limit; i++) {
       emit({ type: "status", text: i === 0 ? "Analyst is planning the research…" : "Analyst is reading the results…" });
-      const last = i === MAX_STEPS - 1;
+      const last = i === limit - 1;
       const { res, provider } = await call(!last);
 
       if (res.toolCalls.length && !last) {
@@ -381,6 +421,7 @@ export async function runAgent(input: AskInput, emit: Emit) {
               if (!impl) throw new Error(`unknown tool ${tc.function.name}`);
               out = await impl.run(args);
               if (tc.function.name === "simulate_trade") simulated = true;
+              if (impl.source === "Finnhub" || (impl.source === "Bitget MCP" && tc.function.name !== "bitget_tool_schema")) eventDataOk = true;
             } catch (e) {
               ok = false;
               out = { error: (e as Error).message };
@@ -410,8 +451,9 @@ export async function runAgent(input: AskInput, emit: Emit) {
       }
       // A dollar-sized idea that was never simulated means the model did its own maths: send it back once to check.
       const hedge = typeof parsed.hedge === "string" ? parsed.hedge : "";
-      if (!simulated && !hedgeChecked && /\$\s?\d/.test(hedge) && i < MAX_STEPS - 2) {
+      if (!simulated && !hedgeChecked && /\$\s?\d/.test(hedge)) {
         hedgeChecked = true;
+        limit = Math.max(limit, i + 3); // room for one simulate_trade round + the final answer
         messages.push({ role: "assistant", content: res.content || JSON.stringify(parsed) });
         messages.push({
           role: "user",
@@ -421,7 +463,7 @@ export async function runAgent(input: AskInput, emit: Emit) {
         continue;
       }
       const insight = normalize(parsed);
-      if (!mcpList.length && insight.confidence === "high") insight.confidence = "medium";
+      if (!eventDataOk && insight.confidence === "high") insight.confidence = "medium";
       emit({ type: "final", insight, provider: `${provider.id} · ${provider.model}`, degraded: false });
       return;
     }
