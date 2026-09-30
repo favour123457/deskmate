@@ -117,21 +117,23 @@ function internalTools(holdings: Holding[]): ToolImpl[] {
         function: {
           name: "simulate_trade",
           description:
-            "Compute exactly how a proposed trade changes the user's portfolio risk (weights, concentration, 30d volatility, 1-day VaR, BTC correlation/beta, worst weekend move). ALWAYS use this for any buy/sell/add/trim question instead of estimating. usd_change > 0 adds, < 0 trims.",
+            "Compute exactly how a proposed trade changes the user's portfolio risk (weights, concentration, 30d volatility, 1-day VaR, BTC correlation/beta, worst weekend move). ALWAYS use this for any buy/sell/add/trim question, and for any sizing or hedge idea you suggest, instead of estimating. usd_change > 0 adds, < 0 trims. For a rebalance (trim one position and put the money into another), set into_symbol; without it, sold dollars leave the book.",
           parameters: {
             type: "object",
             properties: {
               symbol: { type: "string", description: "e.g. rNVDA, NVDA, BTC, ETH, SPY" },
               usd_change: { type: "number", description: "Dollar amount; positive = buy/add, negative = sell/trim" },
+              into_symbol: { type: "string", description: "Optional, only with a negative usd_change: instrument that receives the proceeds, e.g. rSPY" },
             },
             required: ["symbol", "usd_change"],
           },
         },
       },
       run: async (a) => {
-        const r = await simulateTrade(holdings, String(a.symbol), Number(a.usd_change));
+        const r = await simulateTrade(holdings, String(a.symbol), Number(a.usd_change), a.into_symbol ? String(a.into_symbol) : undefined);
         const pick = (m: PortfolioMetrics) => ({
           totalUsd: m.totalUsd,
+          weights: m.positions.map((p) => ({ name: p.display, usd: p.usd, weight: p.weight })),
           topHolding: m.topHolding,
           buckets: m.buckets,
           effectivePositions: m.effectivePositions,
@@ -142,7 +144,7 @@ function internalTools(holdings: Holding[]): ToolImpl[] {
           weekendWorstPct: m.weekendWorstPct,
           maxDrawdownPct: m.maxDrawdownPct,
         });
-        return round({ instrument: r.instrument.display, price: r.instrument.price, usdChange: r.usdChange, before: pick(r.before), after: pick(r.after) });
+        return round({ instrument: r.instrument.display, price: r.instrument.price, usdChange: r.usdChange, into: r.into, before: pick(r.before), after: pick(r.after) });
       },
     },
     {
@@ -253,7 +255,10 @@ HOW TO WORK
 1. Plan which facts you need. Use tools to get them: simulate_trade for ANY proposed buy/sell/size question; get_price_history for price context; Bitget MCP data tools for fundamentals, earnings dates, analyst targets, news and sentiment.
 2. Never do arithmetic or statistics yourself — quote numbers returned by tools or given above. Weights, returns, volatility and drawdowns in the data are fractions (0.44 = 44%); always present them to the trader as percentages, and money as $ amounts. If data is missing, say so plainly; never invent numbers, dates or news.
 3. Tie everything to THIS trader's portfolio: concentration, overlap/correlation with what they hold, weekend/overnight exposure, event risk (e.g. earnings before the next US open).
-4. Be specific and short. Suggest a size or hedge only when the data supports it.
+4. Be specific and short. Suggest a size or hedge only when the data supports it, and only after checking it with simulate_trade (use into_symbol for "trim X, move into Y"). Quote the simulated after-numbers in "hedge" and "impact"; never state a target weight you did not simulate.
+5. Round for the reader: percentages to 1 decimal, correlations and beta to 2 decimals, dollars to whole $ (VaR to cents is fine).
+6. "watch" items must be concrete: a price level, a date, or a metric from the tools. If earnings dates or news could not be fetched, say that in "watch" instead of writing generic items.
+7. Confidence: "high" only when the key facts for the question came back from tools. If the Bitget MCP data server is unavailable, confidence is at most "medium".
 
 FINAL ANSWER — reply with ONLY one JSON object, no prose outside it:
 {
@@ -335,6 +340,8 @@ export async function runAgent(input: AskInput, emit: Emit) {
   messages.push({ role: "user", content: input.question });
 
   let pi = 0;
+  let simulated = false;
+  let hedgeChecked = false;
   const call = async (withTools: boolean) => {
     let lastErr: Error | null = null;
     while (pi < provs.length) {
@@ -344,7 +351,7 @@ export async function runAgent(input: AskInput, emit: Emit) {
       } catch (e) {
         lastErr = e as Error;
         pi++;
-        if (pi < provs.length) emit({ type: "status", text: `${p.id} failed — switching to ${provs[pi].id}…` });
+        if (pi < provs.length) emit({ type: "status", text: `${p.id} · ${p.model} failed — switching to ${provs[pi].id} · ${provs[pi].model}…` });
       }
     }
     throw lastErr || new Error("no provider");
@@ -373,6 +380,7 @@ export async function runAgent(input: AskInput, emit: Emit) {
             try {
               if (!impl) throw new Error(`unknown tool ${tc.function.name}`);
               out = await impl.run(args);
+              if (tc.function.name === "simulate_trade") simulated = true;
             } catch (e) {
               ok = false;
               out = { error: (e as Error).message };
@@ -400,7 +408,21 @@ export async function runAgent(input: AskInput, emit: Emit) {
         parsed = extractJson(retry.res.content);
         if (!parsed) parsed = { headline: "Analysis", verdict: "info", summary: retry.res.content || res.content || "" };
       }
-      emit({ type: "final", insight: normalize(parsed), provider: `${provider.id} · ${provider.model}`, degraded: false });
+      // A dollar-sized idea that was never simulated means the model did its own maths: send it back once to check.
+      const hedge = typeof parsed.hedge === "string" ? parsed.hedge : "";
+      if (!simulated && !hedgeChecked && /\$\s?\d/.test(hedge) && i < MAX_STEPS - 2) {
+        hedgeChecked = true;
+        messages.push({ role: "assistant", content: res.content || JSON.stringify(parsed) });
+        messages.push({
+          role: "user",
+          content: `Your "hedge" suggests a specific trade ("${hedge.slice(0, 200)}") but you did not run simulate_trade, so its numbers are unverified. Call simulate_trade for exactly that trade now (use into_symbol if the money moves into another holding), then return the final JSON again with "hedge" and "impact" using only the simulated numbers.`,
+        });
+        emit({ type: "status", text: "Checking the suggested trade with the portfolio engine…" });
+        continue;
+      }
+      const insight = normalize(parsed);
+      if (!mcpList.length && insight.confidence === "high") insight.confidence = "medium";
+      emit({ type: "final", insight, provider: `${provider.id} · ${provider.model}`, degraded: false });
       return;
     }
   } catch (e) {

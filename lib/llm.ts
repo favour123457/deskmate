@@ -3,7 +3,7 @@ export type Provider = { id: string; baseUrl: string; model: string; apiKey: str
 
 const PRESETS: Record<string, { baseUrl: string; model: string; keyEnv: string }> = {
   qwen: { baseUrl: "https://hackathon.bitgetops.com/v1", model: "qwen3.8-max", keyEnv: "BITGET_QWEN_API_KEY" },
-  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash", keyEnv: "GEMINI_API_KEY" },
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.5-flash,gemini-3.5-flash-lite", keyEnv: "GEMINI_API_KEY" },
   groq: { baseUrl: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", keyEnv: "GROQ_API_KEY" },
   deepseek: { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat", keyEnv: "DEEPSEEK_API_KEY" },
   openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "deepseek/deepseek-chat-v3.1:free", keyEnv: "OPENROUTER_API_KEY" },
@@ -22,7 +22,11 @@ export function providers(): Provider[] {
     const apiKey = process.env[p.keyEnv] || "";
     const baseUrl = (id === "custom" ? process.env.LLM_BASE_URL : process.env[`${up}_BASE_URL`]) || p.baseUrl;
     const model = (id === "custom" ? process.env.LLM_MODEL : process.env[`${up}_MODEL`]) || p.model;
-    if (apiKey && baseUrl && model) out.push({ id, baseUrl: baseUrl.replace(/\/$/, ""), model, apiKey });
+    if (!apiKey || !baseUrl || !model) continue;
+    // A comma-separated model list gives same-provider fallbacks, e.g. "gemini-3.5-flash,gemini-3.5-flash-lite".
+    for (const m of model.split(",").map((s) => s.trim()).filter(Boolean)) {
+      out.push({ id, baseUrl: baseUrl.replace(/\/$/, ""), model: m, apiKey });
+    }
   }
   return out;
 }
@@ -55,7 +59,7 @@ export async function chat(p: Provider, messages: ChatMessage[], tools?: ToolDef
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.apiKey}` },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS) || 35_000),
   });
   const text = await res.text();
   if (!res.ok) throw new LlmError(`${p.id} ${res.status}: ${text.slice(0, 300)}`, res.status);

@@ -64,28 +64,38 @@ export async function snapshot(holdings: Holding[]): Promise<Snapshot> {
 }
 
 /** Before/after comparison for a proposed trade. usdChange > 0 = buy/add, < 0 = sell/trim. */
-export async function simulateTrade(holdings: Holding[], symbol: string, usdChange: number) {
+/** Apply one buy/sell leg to `book` in place; returns the resolved instrument and the dollar change actually applied. */
+async function applyLeg(book: Holding[], symbol: string, usdChange: number) {
   const target = await resolveSymbol(symbol);
-  const before = await snapshot(holdings);
-  const after: Holding[] = holdings.map((h) => ({ ...h }));
-  let applied = false;
-  for (const h of after) {
+  for (const h of book) {
     try {
       const r = await resolveSymbol(h.symbol);
-      if (r.symbol === target.symbol && r.market === target.market && !applied) {
-        h.usd = Math.max(0, Number(h.usd) + usdChange);
-        applied = true;
+      if (r.symbol === target.symbol && r.market === target.market) {
+        const old = Number(h.usd);
+        h.usd = Math.max(0, old + usdChange);
+        return { target, applied: h.usd - old };
       }
     } catch {
       /* ignore unresolvable */
     }
   }
-  if (!applied) {
-    if (usdChange <= 0) throw new Error(`You don't hold ${target.display}, so there is nothing to sell.`);
-    after.push({ symbol, usd: usdChange });
+  if (usdChange <= 0) throw new Error(`You don't hold ${target.display}, so there is nothing to sell.`);
+  book.push({ symbol, usd: usdChange });
+  return { target, applied: usdChange };
+}
+
+/** Before/after metrics for a trade. With `intoSymbol`, the proceeds of a sell are moved into that instrument (a rebalance). */
+export async function simulateTrade(holdings: Holding[], symbol: string, usdChange: number, intoSymbol?: string) {
+  const before = await snapshot(holdings);
+  const after: Holding[] = holdings.map((h) => ({ ...h }));
+  const { target, applied } = await applyLeg(after, symbol, usdChange);
+  let into: { display: string; usdChange: number } | null = null;
+  if (intoSymbol && applied < 0) {
+    const leg = await applyLeg(after, intoSymbol, -applied);
+    into = { display: leg.target.display, usdChange: leg.applied };
   }
-  const afterSnap = await snapshot(after);
-  return { instrument: target, usdChange, before: before.metrics, after: afterSnap.metrics };
+  const afterSnap = await snapshot(after.filter((h) => h.usd > 0));
+  return { instrument: target, usdChange: applied, into, before: before.metrics, after: afterSnap.metrics };
 }
 
 /** Compact, LLM-friendly summary of one instrument's recent history (numbers computed here). */

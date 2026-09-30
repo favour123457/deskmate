@@ -20,7 +20,7 @@ const MCP = process.env.BITGET_MCP_URL || "https://agent.bitget.com/mcp";
 let failures = 0;
 
 async function j(url, opts = {}) {
-  const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(15000) });
+  const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(45000) });
   const t = await r.text();
   try { return { status: r.status, body: JSON.parse(t) }; } catch { return { status: r.status, body: t }; }
 }
@@ -69,7 +69,7 @@ try {
 console.log("\n3) LLM providers");
 const PRESETS = {
   qwen: ["BITGET_QWEN_API_KEY", "https://hackathon.bitgetops.com/v1", "qwen3.8-max"],
-  gemini: ["GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash"],
+  gemini: ["GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.5-flash"],
   groq: ["GROQ_API_KEY", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b"],
   deepseek: ["DEEPSEEK_API_KEY", "https://api.deepseek.com/v1", "deepseek-chat"],
   openrouter: ["OPENROUTER_API_KEY", "https://openrouter.ai/api/v1", "deepseek/deepseek-chat-v3.1:free"],
@@ -81,7 +81,7 @@ for (const [id, [keyEnv, base0, model0]] of Object.entries(PRESETS)) {
   if (!key) continue;
   const up = id.toUpperCase();
   const base = (id === "custom" ? base0 : process.env[`${up}_BASE_URL`] || base0).replace(/\/$/, "");
-  const model = id === "custom" ? model0 : process.env[`${up}_MODEL`] || model0;
+  const model = id === "custom" ? model0 : (process.env[`${up}_MODEL`] || model0).split(",")[0].trim();
   console.log(`  - ${id} (${model})`);
   try {
     let names = [];
