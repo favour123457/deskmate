@@ -178,7 +178,7 @@ function finnhubTool(): ToolImpl {
       function: {
         name: "get_earnings_and_news",
         description:
-          "Finnhub (backup, non-Bitget source): next and most recent earnings date (with EPS/revenue estimates) and the last 7 days of company news headlines for a US stock or rToken (e.g. rNVDA -> NVDA). US stocks only. Prefer Bitget MCP data tools when they are connected.",
+          "Finnhub (non-Bitget source): next and most recent earnings date (with EPS/revenue estimates), the latest monthly analyst rating counts (strong buy/buy/hold/sell), and the last 7 days of news headlines that mention the company, for a US stock or rToken (e.g. rNVDA -> NVDA). US stocks only. This is the source for company news; for price targets and fundamentals use the Bitget data entries.",
         parameters: {
           type: "object",
           properties: { symbol: { type: "string", description: "e.g. rNVDA, TSLA" } },
@@ -276,7 +276,7 @@ ${JSON.stringify(metricsForPrompt(snap.metrics))}
 ${JSON.stringify(priceStats)}
 ${snap.errors.length ? `- Data problems: ${snap.errors.join("; ")}` : ""}
 - ${mcpNote}
-- ${finnhubEnabled() ? "Finnhub backup is available via get_earnings_and_news (earnings dates + company news for US stocks). Name Finnhub as the source when you use it." : "No Finnhub backup configured."}
+- ${finnhubEnabled() ? "Finnhub is available via get_earnings_and_news (earnings dates, analyst rating counts, company news for US stocks). Name Finnhub as the source when you use it." : "No Finnhub backup configured."}
 ${mcpCatalog ? `\nBITGET US-STOCK DATA CATALOG (use bitget_tool_schema then bitget_data):\n${mcpCatalog}\n` : ""}${entries ? `
 BITGET DATA ENTRIES (already discovered for you — these ids are NOT tool names — always call the bitget_do_query tool with {"entry_id": "<id>", "params": {...}} built from the params hint (* = required); titles are in Chinese; call bitget_guide only if nothing below fits):
 ${entries.text}

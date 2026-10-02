@@ -191,6 +191,24 @@ details.trail-box .trail { margin-top: 8px; }
 .disclaimer { max-width: 860px; margin: 6px auto 0; font-size: 11px; color: var(--faint); }
 
 /* ---------- responsive ---------- */
+/* ---------- live news & ratings ---------- */
+.briefs { display: flex; flex-direction: column; gap: 8px; }
+.brief { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0; }
+.brief-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.er-chip { font-size: 11px; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line-2); color: var(--muted); white-space: nowrap; }
+.er-chip.hot { border-color: rgba(240, 162, 2, 0.6); color: var(--warn); }
+.brief-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 3px; min-width: 0; }
+.brief-row .k { color: var(--muted); width: 58px; flex: none; }
+.brief-row .v { flex: none; }
+.ell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rating-bar { flex: 1; display: flex; height: 6px; border-radius: 99px; overflow: hidden; background: var(--bg); min-width: 40px; }
+.rating-bar .b { background: var(--up); }
+.rating-bar .h { background: var(--faint); }
+.rating-bar .s { background: var(--down); }
+.news { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 5px; font-size: 12px; line-height: 1.35; }
+.news a { color: var(--text); text-decoration: none; }
+.news a:hover { color: var(--accent); text-decoration: underline; }
+
 @media (max-width: 900px) {
   .shell { height: auto; min-height: 100vh; }
   .main { grid-template-columns: 1fr; }

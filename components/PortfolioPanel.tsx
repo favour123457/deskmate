@@ -1,5 +1,6 @@
 "use client";
 import type { Holding, PortfolioMetrics } from "@/lib/types";
+import { LiveResearch } from "./LiveResearch";
 
 const BUCKET_COLOR: Record<string, string> = {
   "US tech": "#5b8def",
@@ -122,6 +123,8 @@ export function PortfolioPanel({ holdings, setHoldings, profile, setProfile, met
           </>
         )}
       </section>
+
+      {m && <LiveResearch symbols={m.positions.filter((p) => p.bucket !== "Crypto" && p.bucket !== "Other").map((p) => p.display)} />}
 
       <section className="card">
         <h2>About you</h2>
