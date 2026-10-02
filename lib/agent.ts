@@ -3,6 +3,7 @@
 import { chat, providers, type ChatMessage, type Provider, type ToolCall, type ToolDef } from "./llm";
 import { earningsAndNews, finnhubEnabled } from "./finnhub";
 import { callMcp, mcpLastError, mcpTools, type McpTool } from "./mcp";
+import { catalogForPrompt, loadCatalog } from "./mcp-catalog";
 import { usMarketStatus } from "./market-clock";
 import { priceHistorySummary, simulateTrade, snapshot, type Snapshot } from "./portfolio";
 import type { Holding, Insight, PortfolioMetrics, Risk, StreamEvent, TrailStep, Verdict } from "./types";
@@ -260,7 +261,8 @@ function summarize(result: unknown): string {
 }
 
 // ---------- prompt ----------
-function systemPrompt(snap: Snapshot, profile: string | undefined, mcpCatalog: string | null, mcpNote: string, priceStats: unknown[]) {
+function systemPrompt(snap: Snapshot, profile: string | undefined, mcpCatalog: string | null, mcpNote: string, priceStats: unknown[], entries: { text: string; ids: Set<string> } | null) {
+  const has = (id: string) => entries?.ids.has(id);
   const clock = usMarketStatus();
   return `You are Deskmate, an AI research analyst on a trading desk for small retail traders who hold Bitget tokenized US stocks (rTokens such as rNVDA, which trade 7x24) alongside crypto.
 You RESEARCH and EXPLAIN. The human trader makes the final decision. You never place orders.
@@ -275,7 +277,12 @@ ${JSON.stringify(priceStats)}
 ${snap.errors.length ? `- Data problems: ${snap.errors.join("; ")}` : ""}
 - ${mcpNote}
 - ${finnhubEnabled() ? "Finnhub backup is available via get_earnings_and_news (earnings dates + company news for US stocks). Name Finnhub as the source when you use it." : "No Finnhub backup configured."}
-${mcpCatalog ? `\nBITGET US-STOCK DATA CATALOG (use bitget_tool_schema then bitget_data):\n${mcpCatalog}\n` : ""}
+${mcpCatalog ? `\nBITGET US-STOCK DATA CATALOG (use bitget_tool_schema then bitget_data):\n${mcpCatalog}\n` : ""}${entries ? `
+BITGET DATA ENTRIES (already discovered for you — call bitget_do_query directly with {"entry_id": "<id>", "params": {...}} built from the params hint; titles are in Chinese; call bitget_guide only if nothing below fits):
+${entries.text}
+Examples:${has("equity_calendar") ? `\n- Earnings date / event risk for NVDA: bitget_do_query {"entry_id":"equity_calendar","params":{"symbol":"NVDA"}}` : ""}${has("equity_price_quote") ? `\n- Underlying US stock quote (compare with the rToken price): bitget_do_query {"entry_id":"equity_price_quote","params":{"symbol":"NVDA"}}` : ""}${has("news_label_search") ? `\n- Recent news: bitget_do_query {"entry_id":"news_label_search","params":{...per its params hint, e.g. the ticker}}` : ""}
+Use the underlying ticker (rNVDA -> NVDA) for US-stock entries.
+` : ""}
 HOW TO WORK
 1. Plan which facts you need. Use tools to get them: simulate_trade for ANY proposed buy/sell/size question; Bitget MCP data tools for fundamentals, earnings dates, analyst targets, news and sentiment${finnhubEnabled() ? " (get_earnings_and_news from Finnhub if the MCP is down or lacks the data)" : ""}. Price stats for held instruments are already above — call get_price_history only for instruments the trader does NOT hold. You have at most ${MAX_STEPS} rounds, so request all the tools you need in parallel in one round.
 2. Never do arithmetic or statistics yourself — quote numbers returned by tools or given above. Weights, returns, volatility and drawdowns in the data are fractions (0.44 = 44%); always present them to the trader as percentages, and money as $ amounts. If data is missing, say so plainly; never invent numbers, dates or news.
@@ -355,6 +362,18 @@ export async function runAgent(input: AskInput, emit: Emit) {
   });
 
   const { impls: mcpImpls, catalog } = await mcpToolImpls(mcpList);
+  let entries: { text: string; ids: Set<string> } | null = null;
+  if (mcpList.some((t) => t.name === "guide") && mcpList.some((t) => t.name === "do_query")) {
+    const t2 = Date.now();
+    try {
+      const list = await loadCatalog();
+      const text = catalogForPrompt(list);
+      entries = { text, ids: new Set(list.map((e) => e.id)) };
+      step({ tool: "load_bitget_catalog", source: "Bitget MCP", args: {}, ok: true, ms: Date.now() - t2, summary: `${text.split("\n").length} data entries available (${[...new Set(list.map((e) => e.category))].join(", ")})` });
+    } catch (e) {
+      step({ tool: "load_bitget_catalog", source: "Bitget MCP", args: {}, ok: false, ms: Date.now() - t2, summary: `catalog not loaded (${(e as Error).message}); the analyst can still browse it with bitget_guide` });
+    }
+  }
   const mcpNote = mcpList.length
     ? `Bitget MCP data server connected (${mcpList.length} tools).`
     : `Bitget MCP data server unavailable${mcpLastError() ? ` (${mcpLastError()})` : ""} — rely on Bitget REST tools and say fundamentals/news could not be fetched.`;
@@ -370,7 +389,7 @@ export async function runAgent(input: AskInput, emit: Emit) {
     return;
   }
 
-  const messages: ChatMessage[] = [{ role: "system", content: systemPrompt(snap, input.profile, catalog, mcpNote, priceStats) }];
+  const messages: ChatMessage[] = [{ role: "system", content: systemPrompt(snap, input.profile, catalog, mcpNote, priceStats, entries) }];
   for (const h of (input.history || []).slice(-4)) {
     messages.push({ role: "user", content: h.question });
     messages.push({ role: "assistant", content: h.answer });
@@ -401,6 +420,7 @@ export async function runAgent(input: AskInput, emit: Emit) {
     for (let i = 0; i < limit; i++) {
       emit({ type: "status", text: i === 0 ? "Analyst is planning the research…" : "Analyst is reading the results…" });
       const last = i === limit - 1;
+      if (last && i > 0) messages.push({ role: "user", content: "You are out of research rounds. Using only the data gathered above, return the final answer now as ONLY the JSON object described in the instructions." });
       const { res, provider } = await call(!last);
 
       if (res.toolCalls.length && !last) {
@@ -421,7 +441,7 @@ export async function runAgent(input: AskInput, emit: Emit) {
               if (!impl) throw new Error(`unknown tool ${tc.function.name}`);
               out = await impl.run(args);
               if (tc.function.name === "simulate_trade") simulated = true;
-              if (impl.source === "Finnhub" || (impl.source === "Bitget MCP" && tc.function.name !== "bitget_tool_schema")) eventDataOk = true;
+              if (impl.source === "Finnhub" || (impl.source === "Bitget MCP" && !["bitget_tool_schema", "bitget_guide"].includes(tc.function.name))) eventDataOk = true;
             } catch (e) {
               ok = false;
               out = { error: (e as Error).message };
@@ -441,13 +461,19 @@ export async function runAgent(input: AskInput, emit: Emit) {
         continue;
       }
 
+      const full = (x: Record<string, unknown> | null): x is Record<string, unknown> =>
+        !!x && (!!String(x.summary || "").trim() || (Array.isArray(x.findings) && x.findings.length > 0));
       let parsed = extractJson(res.content);
-      if (!parsed) {
+      if (!full(parsed)) {
         messages.push({ role: "assistant", content: res.content || "" });
         messages.push({ role: "user", content: "Return the final answer now as ONLY the JSON object described in the instructions." });
         const retry = await call(false);
         parsed = extractJson(retry.res.content);
-        if (!parsed) parsed = { headline: "Analysis", verdict: "info", summary: retry.res.content || res.content || "" };
+        if (!full(parsed)) {
+          const text = (retry.res.content || res.content || "").trim();
+          if (!text) throw new Error("the model returned an empty answer");
+          parsed = { headline: "Analysis", verdict: "info", summary: text };
+        }
       }
       // A dollar-sized idea that was never simulated means the model did its own maths: send it back once to check.
       const hedge = typeof parsed.hedge === "string" ? parsed.hedge : "";
