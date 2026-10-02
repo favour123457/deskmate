@@ -398,6 +398,8 @@ export async function runAgent(input: AskInput, emit: Emit) {
 
   let pi = 0;
   let simulated = false;
+  // Dollar amounts the model may quote without simulating: simulated trade sizes, current positions, book total.
+  const knownUsd = new Set<number>([...input.holdings.map((h) => Math.round(Math.abs(h.usd))), Math.round(snap.metrics.totalUsd)]);
   let hedgeChecked = false;
   let eventDataOk = false; // earnings/news came back from Bitget MCP or Finnhub
   let limit = MAX_STEPS;
@@ -440,7 +442,10 @@ export async function runAgent(input: AskInput, emit: Emit) {
             try {
               if (!impl) throw new Error(`unknown tool ${tc.function.name}`);
               out = await impl.run(args);
-              if (tc.function.name === "simulate_trade") simulated = true;
+              if (tc.function.name === "simulate_trade") {
+                simulated = true;
+                knownUsd.add(Math.round(Math.abs(Number(args.usd_change) || 0)));
+              }
               if (impl.source === "Finnhub" || (impl.source === "Bitget MCP" && !["bitget_tool_schema", "bitget_guide"].includes(tc.function.name))) eventDataOk = true;
             } catch (e) {
               ok = false;
@@ -477,14 +482,17 @@ export async function runAgent(input: AskInput, emit: Emit) {
       }
       // A dollar-sized idea that was never simulated means the model did its own maths: send it back once to check.
       const hedge = typeof parsed.hedge === "string" ? parsed.hedge : "";
-      // Also catches target weights like "down to 30%" that were never simulated.
-      if (!simulated && !hedgeChecked && /\$\s?\d|\d\s?%/.test(hedge)) {
+      // Every $ size in the idea must be a simulated trade; a % target with no simulation at all is also unverified.
+      const unsimulated = [...hedge.matchAll(/\$\s?([\d,]+(?:\.\d+)?)/g)]
+        .map((m) => Math.round(Number(m[1].replace(/,/g, ""))))
+        .filter((x) => x > 0 && !knownUsd.has(x));
+      if (!hedgeChecked && (unsimulated.length > 0 || (!simulated && /\d\s?%/.test(hedge)))) {
         hedgeChecked = true;
         limit = Math.max(limit, i + 3); // room for one simulate_trade round + the final answer
         messages.push({ role: "assistant", content: res.content || JSON.stringify(parsed) });
         messages.push({
           role: "user",
-          content: `Your "hedge" suggests a specific trade ("${hedge.slice(0, 200)}") but you did not run simulate_trade, so its numbers are unverified. Pick a concrete dollar amount and call simulate_trade for that trade now (use into_symbol if the money moves into another holding), then return the final JSON again with "hedge" and "impact" using only the simulated numbers.`,
+          content: `Your "hedge" suggests a specific trade ("${hedge.slice(0, 200)}") but ${unsimulated.length ? `you did not simulate ${unsimulated.map((x) => "$" + x).join(", ")}` : "you did not run simulate_trade"}, so its numbers are unverified. Pick ONE concrete dollar amount and call simulate_trade for that trade now (use into_symbol if the money moves into another holding), then return the final JSON again with "hedge" quoting only that simulated result (keep "impact" for the trade the trader asked about, if any).`,
         });
         emit({ type: "status", text: "Checking the suggested trade with the portfolio engine…" });
         continue;

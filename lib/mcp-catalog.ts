@@ -3,7 +3,7 @@
 // catalog once in code (cached) and hand the model a compact entry list up front.
 import { callMcp } from "./mcp";
 
-export type CatalogEntry = { id: string; category: string; title: string; summary: string; params: string; tier: string };
+export type CatalogEntry = { id: string; category: string; title: string; summary: string; params: string; tier: string; paramsRaw: unknown };
 
 const TTL = 6 * 60 * 60_000;
 let cache: { at: number; entries: CatalogEntry[] } | null = null;
@@ -54,6 +54,7 @@ export async function loadCatalog(): Promise<CatalogEntry[]> {
         title: String(e.title || ""),
         summary: String(e.summary || ""),
         params: paramsText(e.params_summary),
+        paramsRaw: e.params_summary ?? null,
         tier: String(e.data_tier || ""),
       }));
     }),
