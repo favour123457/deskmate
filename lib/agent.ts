@@ -280,7 +280,7 @@ ${snap.errors.length ? `- Data problems: ${snap.errors.join("; ")}` : ""}
 ${mcpCatalog ? `\nBITGET US-STOCK DATA CATALOG (use bitget_tool_schema then bitget_data):\n${mcpCatalog}\n` : ""}${entries ? `
 BITGET DATA ENTRIES (already discovered for you — call bitget_do_query directly with {"entry_id": "<id>", "params": {...}} built from the params hint; titles are in Chinese; call bitget_guide only if nothing below fits):
 ${entries.text}
-Examples:${has("equity_calendar") ? `\n- Earnings date / event risk for NVDA: bitget_do_query {"entry_id":"equity_calendar","params":{"symbol":"NVDA"}}` : ""}${has("equity_price_quote") ? `\n- Underlying US stock quote (compare with the rToken price): bitget_do_query {"entry_id":"equity_price_quote","params":{"symbol":"NVDA"}}` : ""}${has("news_label_search") ? `\n- Recent news: bitget_do_query {"entry_id":"news_label_search","params":{...per its params hint, e.g. the ticker}}` : ""}
+Examples:${has("equity_calendar") ? `\n- Earnings date / event risk for NVDA: bitget_do_query {"entry_id":"equity_calendar","params":{"symbol":"NVDA"}}` : ""}${has("equity_price_quote") ? `\n- Underlying US stock quote (compare with the rToken price): bitget_do_query {"entry_id":"equity_price_quote","params":{"symbol":"NVDA"}}` : ""}${has("equity_estimates_price_target") ? `\n- Analyst price targets: bitget_do_query {"entry_id":"equity_estimates_price_target","params":{"symbol":"NVDA","limit":5}}` : ""}
 Use the underlying ticker (rNVDA -> NVDA) for US-stock entries.
 ` : ""}
 HOW TO WORK

@@ -65,9 +65,12 @@ export async function loadCatalog(): Promise<CatalogEntry[]> {
   return entries;
 }
 
+// news_label_search needs an undocumented integer "label" (tag id, not a ticker); the model can only guess it.
+const SKIP = new Set(["news_label_search"]);
+
 /** One line per entry, free tier only when tiers are given. */
 export function catalogForPrompt(entries: CatalogEntry[]): string {
-  const usable = entries.filter((e) => (!e.tier || e.tier === "free") && (e.category !== "crypto" || CRYPTO_KEEP.has(e.id)));
+  const usable = entries.filter((e) => (!e.tier || e.tier === "free") && (e.category !== "crypto" || CRYPTO_KEEP.has(e.id)) && !SKIP.has(e.id));
   return usable
     .map((e) => `- ${e.id} [${e.category}] ${e.title}${e.params ? ` | params: ${e.params.slice(0, 220)}` : ""}`)
     .join("\n");
