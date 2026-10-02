@@ -49,7 +49,19 @@ export class LlmError extends Error {
   }
 }
 
+// Models whose daily quota is used up are skipped until the provider says the quota resets (per server instance).
+const cooldown = new Map<string, number>();
+
+function dailyQuotaReset(text: string): number | null {
+  if (!/PerDay|per day|daily/i.test(text)) return null;
+  const m = text.match(/retry in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?/i);
+  const ms = m ? ((Number(m[1]) || 0) * 3600 + (Number(m[2]) || 0) * 60 + (Number(m[3]) || 0)) * 1000 : 3600_000;
+  return Date.now() + Math.min(Math.max(ms, 60_000), 24 * 3600_000);
+}
+
 export async function chat(p: Provider, messages: ChatMessage[], tools?: ToolDef[]) {
+  const key = `${p.id}:${p.model}`;
+  if ((cooldown.get(key) || 0) > Date.now()) throw new LlmError(`${p.id} ${p.model}: daily quota used up, skipping until it resets`, 429);
   const body: Record<string, unknown> = { model: p.model, messages, temperature: 0.2 };
   if (tools?.length) {
     body.tools = tools;
@@ -63,13 +75,18 @@ export async function chat(p: Provider, messages: ChatMessage[], tools?: ToolDef
       signal: AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS) || 35_000),
     });
   let res = await send();
-  // Overloaded / rate-limited: one retry after 1-2 s before the caller falls back to the next provider.
-  if (res.status === 503 || res.status === 429) {
-    await res.body?.cancel();
-    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
-    res = await send();
+  let text = await res.text();
+  // Overloaded / per-minute rate limit: one retry after 1-2 s before the caller falls back to the next provider.
+  // A used-up daily quota won't recover in seconds: skip the retry and park the model until it resets.
+  if (res.status === 429 || res.status === 503) {
+    const reset = res.status === 429 ? dailyQuotaReset(text) : null;
+    if (reset) cooldown.set(key, reset);
+    else {
+      await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+      res = await send();
+      text = await res.text();
+    }
   }
-  const text = await res.text();
   if (!res.ok) throw new LlmError(`${p.id} ${res.status}: ${text.slice(0, 300)}`, res.status);
   const json = JSON.parse(text);
   const msg = json.choices?.[0]?.message;
