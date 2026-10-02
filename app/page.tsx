@@ -1,235 +1,174 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { InsightCard } from "@/components/InsightCard";
-import { PortfolioPanel } from "@/components/PortfolioPanel";
-import { Trail } from "@/components/Trail";
-import type { Holding, Insight, PortfolioMetrics, StreamEvent, TrailStep } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Globe, type OrbitTicker } from "@/components/Globe";
+import { ProfileForm } from "@/components/ProfileForm";
+import { usMarketStatus } from "@/lib/market-clock";
+import { DEFAULT_ANSWERS, detectPlace, loadAnswers, saveAnswers, type ProfileAnswers } from "@/lib/profile";
 
-type Turn = {
-  question: string;
-  status: string;
-  steps: TrailStep[];
-  insight: Insight | null;
-  provider: string | null;
-  degraded: boolean;
-  error: string | null;
-};
+const INTRO_SECONDS = 12;
+const ORBIT_SYMBOLS = ["rNVDA", "BTC", "rTSLA", "ETH", "rAAPL", "rSPY"];
 
-type Health = {
-  bitgetRest: { ok: boolean; detail: string };
-  bitgetMcp: { ok: boolean; tools: string[]; error: string | null };
-  llm: { id: string; model: string }[];
-};
-
-const DEFAULT_HOLDINGS: Holding[] = [
-  { symbol: "rNVDA", usd: 400 },
-  { symbol: "rTSLA", usd: 150 },
-  { symbol: "BTC", usd: 250 },
-  { symbol: "rSPY", usd: 100 },
-];
-const DEFAULT_PROFILE = "Student in Lagos with about $900. Medium risk. I usually hold through the weekend and can't watch the US session live.";
-
-const SUGGESTIONS = [
-  "Should I add $200 of rNVDA before the weekend?",
-  "What is the biggest risk in my book right now?",
-  "If BTC drops 10%, what happens to me — and how do I hedge?",
-  "Is there an earnings or macro event before the next US open that hits my holdings?",
-];
-
-function load<T>(key: string, fallback: T): T {
-  try {
-    const v = localStorage.getItem(key);
-    return v ? (JSON.parse(v) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-function save(key: string, v: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(v));
-  } catch {
-    /* storage unavailable */
-  }
+function timeIn(tz: string, d: Date) {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
 }
 
-export default function Home() {
-  const [holdings, setHoldings] = useState<Holding[]>(DEFAULT_HOLDINGS);
-  const [profile, setProfile] = useState(DEFAULT_PROFILE);
-  const [metrics, setMetrics] = useState<PortfolioMetrics | null>(null);
-  const [errors, setErrors] = useState<string[]>([]);
-  const [clock, setClock] = useState<string>("");
-  const [loadingBook, setLoadingBook] = useState(false);
-  const [health, setHealth] = useState<Health | null>(null);
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-  const feedRef = useRef<HTMLDivElement>(null);
-  const hydrated = useRef(false);
-
-  // restore saved book
+function useClock() {
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
-    setHoldings(load("dm.holdings", DEFAULT_HOLDINGS));
-    setProfile(load("dm.profile", DEFAULT_PROFILE));
-    hydrated.current = true;
+    setNow(new Date());
+    const t = setInterval(() => setNow(new Date()), 20_000);
+    return () => clearInterval(t);
   }, []);
-  useEffect(() => { if (hydrated.current) save("dm.holdings", holdings); }, [holdings]);
-  useEffect(() => { if (hydrated.current) save("dm.profile", profile); }, [profile]);
+  return now;
+}
 
-  const refresh = useCallback(async (h: Holding[]) => {
-    setLoadingBook(true);
+function hoursText(h: number) {
+  if (h < 1) return `${Math.max(1, Math.round(h * 60))} minutes`;
+  const r = Math.round(h);
+  return `${r} hour${r === 1 ? "" : "s"}`;
+}
+
+export default function Onboarding() {
+  const router = useRouter();
+  const now = useClock();
+  const [step, setStep] = useState<"intro" | "setup">("intro");
+  const [ready, setReady] = useState(false);
+  const [answers, setAnswers] = useState<ProfileAnswers>(DEFAULT_ANSWERS);
+  const [tickers, setTickers] = useState<OrbitTicker[]>(ORBIT_SYMBOLS.map((label) => ({ label })));
+  const [left, setLeft] = useState(INTRO_SECONDS);
+  const [paused, setPaused] = useState(false);
+  const setupHeading = useRef<HTMLHeadingElement>(null);
+
+  // Returning visitors go straight to the desk (unless they asked to replay the intro).
+  useEffect(() => {
+    let onboarded = false;
     try {
-      const res = await fetch("/api/portfolio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holdings: h }) });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "failed");
-      setMetrics(j.metrics);
-      setErrors(j.errors || []);
-      setClock(j.clock?.label || "");
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    } finally {
-      setLoadingBook(false);
+      onboarded = localStorage.getItem("dm.onboarded") === "1";
+    } catch {
+      /* storage unavailable */
     }
+    if (onboarded && !new URLSearchParams(window.location.search).has("intro")) {
+      router.replace("/desk");
+      return;
+    }
+    setAnswers(loadAnswers() ?? { ...DEFAULT_ANSWERS, place: detectPlace() });
+    setReady(true);
+  }, [router]);
+
+  // Live prices for the orbiting chips.
+  useEffect(() => {
+    fetch("/api/portfolio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ holdings: ORBIT_SYMBOLS.map((symbol) => ({ symbol, usd: 1 })) }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        const pos = (j?.metrics?.positions || []) as { display: string; price: number; change24h: number | null }[];
+        if (pos.length) setTickers(pos.map((p) => ({ label: p.display, price: p.price, change: p.change24h })));
+      })
+      .catch(() => { /* chips keep their names only */ });
   }, []);
 
+  // Intro moves on by itself unless the visitor is reading (hover/focus pauses it).
   useEffect(() => {
-    const t = setTimeout(() => refresh(load("dm.holdings", DEFAULT_HOLDINGS)), 50);
-    fetch("/api/health").then((r) => r.json()).then(setHealth).catch(() => setHealth(null));
-    return () => clearTimeout(t);
-  }, [refresh]);
-
+    if (!ready || step !== "intro" || paused) return;
+    const t = setInterval(() => setLeft((s) => Math.max(0, s - 0.1)), 100);
+    return () => clearInterval(t);
+  }, [ready, step, paused]);
   useEffect(() => {
-    feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
-  }, [turns]);
+    if (step === "intro" && left <= 0) goSetup();
+  }, [left, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ask = async (question: string) => {
-    const q = question.trim();
-    if (!q || busy) return;
-    setDraft("");
-    setBusy(true);
-    const history = turns
-      .filter((t) => t.insight)
-      .map((t) => ({ question: t.question, answer: `${t.insight!.headline}. ${t.insight!.summary}` }));
-    const idx = turns.length;
-    setTurns((ts) => [...ts, { question: q, status: "Starting…", steps: [], insight: null, provider: null, degraded: false, error: null }]);
-    const patch = (fn: (t: Turn) => Turn) => setTurns((ts) => ts.map((t, i) => (i === idx ? fn(t) : t)));
+  function goSetup() {
+    setStep("setup");
+    setTimeout(() => setupHeading.current?.focus(), 50);
+  }
+  function openDesk(a: ProfileAnswers) {
+    saveAnswers(a);
+    router.push("/desk");
+  }
 
-    try {
-      const res = await fetch("/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, holdings, profile, history }),
-      });
-      if (!res.ok || !res.body) throw new Error((await res.text()) || `HTTP ${res.status}`);
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() || "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          const ev = JSON.parse(line) as StreamEvent;
-          if (ev.type === "status") patch((t) => ({ ...t, status: ev.text }));
-          else if (ev.type === "step") patch((t) => ({ ...t, steps: [...t.steps, ev.step] }));
-          else if (ev.type === "final") patch((t) => ({ ...t, insight: ev.insight, provider: ev.provider, degraded: ev.degraded }));
-          else if (ev.type === "error") patch((t) => ({ ...t, error: ev.message }));
-        }
-      }
-    } catch (e) {
-      patch((t) => ({ ...t, error: (e as Error).message }));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const clock = now ? usMarketStatus(now) : null;
+  const lagos = now ? timeIn("Africa/Lagos", now) : "--:--";
+  const ny = now ? timeIn("America/New_York", now) : "--:--";
+  const headline = !clock
+    ? "Your rTokens trade while Wall Street sleeps."
+    : clock.open
+      ? "Wall Street is open. You can't watch it all day."
+      : clock.inWeekendWindow
+        ? "Wall Street is shut for the weekend. Your rTokens aren't."
+        : "Wall Street is closed. Your rTokens are still trading.";
+  const context = !clock
+    ? " "
+    : clock.open
+      ? `It's ${lagos} in Lagos. The New York session closes in ${hoursText(clock.hoursUntilChange)}.`
+      : `It's ${lagos} in Lagos. New York opens again in ${hoursText(clock.hoursUntilChange)}.`;
 
-  const llmOk = !!health?.llm.length;
+  if (!ready) return <div className="ob" aria-busy="true" />;
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="logo">D</div>
-          <div style={{ minWidth: 0 }}>
-            <h1>Deskmate</h1>
-            <p>AI research desk for tokenized US stocks + crypto · you make the call</p>
-          </div>
+    <div className="ob">
+      <header className="ob-top">
+        <div className="ob-brand">
+          <span className="logo">D</span>
+          <span>Deskmate</span>
         </div>
-        <div className="status">
-          {clock && <span className="pill"><span className={`dot ${clock.includes("open —") ? "ok" : "wait"}`} />{clock}</span>}
-          <span className="pill" title={health?.bitgetRest.detail}><span className={`dot ${health ? (health.bitgetRest.ok ? "ok" : "bad") : ""}`} />Bitget data</span>
-          <span className="pill" title={health?.bitgetMcp.error || `${health?.bitgetMcp.tools.length ?? 0} tools`}><span className={`dot ${health ? (health.bitgetMcp.ok ? "ok" : "bad") : ""}`} />Bitget MCP</span>
-          <span className="pill" title={health?.llm.map((l) => `${l.id}:${l.model}`).join(", ")}><span className={`dot ${health ? (llmOk ? "ok" : "bad") : ""}`} />{llmOk ? health!.llm[0].id : "No LLM key"}</span>
-        </div>
+        <button className="ob-skip" onClick={() => openDesk(answers)}>Skip to the desk</button>
       </header>
 
-      <main className="main">
-        <PortfolioPanel
-          holdings={holdings}
-          setHoldings={setHoldings}
-          profile={profile}
-          setProfile={setProfile}
-          metrics={metrics}
-          errors={errors}
-          loading={loadingBook}
-          onRefresh={() => refresh(holdings)}
-        />
-
-        <section className="chat">
-          <div className="feed" ref={feedRef}>
-            <div className="feed-inner">
-              {turns.length === 0 ? (
-                <div className="empty">
-                  <h2>Ask before you trade.</h2>
-                  <p>Deskmate checks live Bitget prices, fundamentals and news, then shows exactly how a trade changes the risk in your book — including the hours when the US market is shut and only rTokens are trading.</p>
-                  <div className="chips">
-                    {SUGGESTIONS.map((s) => (
-                      <button key={s} className="chip" onClick={() => ask(s)}>{s}</button>
-                    ))}
-                  </div>
+      <main className="ob-main">
+        <section
+          className="ob-copy"
+          onPointerEnter={() => setPaused(true)}
+          onPointerLeave={() => setPaused(false)}
+          onFocusCapture={() => setPaused(true)}
+          onBlurCapture={() => setPaused(false)}
+        >
+          {step === "intro" ? (
+            <div className="ob-panel" key="intro">
+              <p className="ob-context"><span className={`ob-live${clock?.open ? " open" : ""}`} aria-hidden />{context}</p>
+              <h1 className="ob-h1">{headline}</h1>
+              <p className="ob-lede">
+                Deskmate is an AI research desk for people who hold tokenized US stocks and crypto on Bitget from
+                the other side of the world. Ask about a trade before you make it.
+              </p>
+              <ol className="ob-steps">
+                <li><b>Ask in plain English.</b> “Should I add $200 of rNVDA before the weekend?”</li>
+                <li><b>The agent researches.</b> Live Bitget prices, analyst targets, earnings dates and news.</li>
+                <li><b>It checks the maths in code.</b> What the trade does to your concentration, volatility and weekend risk.</li>
+                <li><b>You decide.</b> You get the evidence and a sizing idea. Deskmate never places orders.</li>
+              </ol>
+              <div className="ob-cta">
+                <button className="ob-btn" onClick={goSetup}>Set up my desk</button>
+                <div className="ob-timer" aria-live="off">
+                  <span>{paused ? "Paused while you read" : `Continuing in ${Math.ceil(left)}s`}</span>
+                  <i style={{ transform: `scaleX(${1 - left / INTRO_SECONDS})` }} />
                 </div>
-              ) : (
-                turns.map((t, i) => (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div className="q">{t.question}</div>
-                    {t.insight ? (
-                      <InsightCard insight={t.insight} steps={t.steps} provider={t.provider} degraded={t.degraded} />
-                    ) : t.error ? (
-                      <div className="card err">Something went wrong: {t.error}</div>
-                    ) : (
-                      <div className="working">
-                        <div className="status-line"><span className="spinner" />{t.status}</div>
-                        <Trail steps={t.steps} />
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="ob-panel" key="setup">
+              <h1 className="ob-h2" tabIndex={-1} ref={setupHeading}>Tell the analyst about you</h1>
+              <p className="ob-lede ob-lede-sm">
+                This shapes every answer: position sizes, how much weekend risk is fine, and what to warn you about.
+                You can change it any time from Profile on the desk.
+              </p>
+              <ProfileForm value={answers} onChange={setAnswers} />
+              <div className="ob-cta">
+                <button className="ob-btn" onClick={() => openDesk(answers)}>Open my desk</button>
+                <button className="ob-ghost" onClick={() => setStep("intro")}>Back</button>
+              </div>
+            </div>
+          )}
+        </section>
 
-          <div className="composer">
-            <div className="composer-inner">
-              <textarea
-                value={draft}
-                rows={1}
-                placeholder="Ask about a trade, e.g. “Should I trim rTSLA before Monday?”"
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    ask(draft);
-                  }
-                }}
-              />
-              <button className="btn primary" onClick={() => ask(draft)} disabled={busy || !draft.trim()}>
-                {busy ? "…" : "Ask"}
-              </button>
-            </div>
-            <p className="disclaimer">Research tool, not financial advice. Deskmate never places orders.</p>
-          </div>
+        <section className="ob-visual" aria-label="Markets right now">
+          <Globe className="ob-globe" tickers={tickers} nyLabel={`New York ${ny}`} homeLabel={`Lagos ${lagos}`} />
+          <p className="ob-caption">
+            Day and night as they are right now. Chips show live Bitget prices and 24-hour change.
+          </p>
         </section>
       </main>
     </div>

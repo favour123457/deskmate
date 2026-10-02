@@ -16,15 +16,13 @@ const usd = (x: number | null | undefined) => (x == null ? "—" : `$${Math.roun
 type Props = {
   holdings: Holding[];
   setHoldings: (h: Holding[]) => void;
-  profile: string;
-  setProfile: (s: string) => void;
   metrics: PortfolioMetrics | null;
   errors: string[];
   loading: boolean;
   onRefresh: () => void;
 };
 
-export function PortfolioPanel({ holdings, setHoldings, profile, setProfile, metrics, errors, loading, onRefresh }: Props) {
+export function PortfolioPanel({ holdings, setHoldings, metrics, errors, loading, onRefresh }: Props) {
   const update = (i: number, patch: Partial<Holding>) => setHoldings(holdings.map((h, j) => (j === i ? { ...h, ...patch } : h)));
   const m = metrics;
 
@@ -126,17 +124,6 @@ export function PortfolioPanel({ holdings, setHoldings, profile, setProfile, met
 
       {m && <LiveResearch symbols={m.positions.filter((p) => p.bucket !== "Crypto" && p.bucket !== "Other").map((p) => p.display)} />}
 
-      <section className="card">
-        <h2>About you</h2>
-        <textarea
-          className="field"
-          rows={3}
-          value={profile}
-          onChange={(e) => setProfile(e.target.value)}
-          placeholder="e.g. Student in Lagos, ~$800, medium risk, hold through weekends, can't watch the US session."
-        />
-        <p className="faint" style={{ fontSize: 11, margin: "6px 0 0" }}>The analyst tailors answers to this.</p>
-      </section>
     </aside>
   );
 }
