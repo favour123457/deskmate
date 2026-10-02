@@ -27,7 +27,9 @@ Last updated: **2 Oct 2026 (Lagos, UTC+1)**. Session 2 is at the top; session 1 
 - "Should I add $200 of rNVDA before the weekend?" → 1 research round with `simulate_trade` + `bitget_do_query` (`equity_calendar`, `equity_price_quote`, `equity_estimates_price_target`) in parallel. The verdict was *proceed smaller*: rNVDA 44.4% → 54.5%, VaR $16.43 → $21.23, analyst targets (Rosenblatt $390 on 28 Sep, Cantor $350 on 30 Sep), last earnings 25 Aug. A smaller $50 add was simulated (47.4%). 11–42 s.
 - "Biggest risk?" → concentration. A trim of $100 into rSPY was simulated: rNVDA 44.4% → 33.3%, VaR $16.43 → $14.31. ~6 s.
 
-**Still open:** generic watch items sometimes ("tech sector headlines"); no ticker news until a Finnhub key is added; Gemini Flash daily quota; Qwen credits; `docs/PROGRESS.md` must keep being updated.
+**Live news & ratings (2 Oct):** `FINNHUB_API_KEY` is set locally and on Vercel. Finnhub free tier: ✅ company news, ✅ monthly recommendation counts, ✅ earnings calendar; ❌ price targets and upgrades/downgrades (403, paid). New `/api/research` + `components/LiveResearch.tsx`: a card per held stock (crypto skipped) showing an analyst rating bar (Finnhub), price-target range + firms (Bitget MCP `equity_estimates_price_target`, fields `analyst_firm`, `price_target`, `published_date`), the next earnings date with an amber chip within 7 days (Finnhub), and 3 headlines that mention the company (Finnhub's feed is noisy, so they're filtered by ticker or company name). 5 min cache + auto-refresh; each part names its source and shows its own error. Verified live: NVDA targets $300–$390, earnings 17 Nov; TSLA targets $25–$475 (GLJ Research's $24.86 is real), earnings 20 Oct. The agent's Finnhub tool now also returns rating counts.
+
+**Still open:** generic watch items sometimes ("tech sector headlines"); Gemini Flash daily quota; Qwen credits; `docs/PROGRESS.md` must keep being updated.
 
 ---
 
