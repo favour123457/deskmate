@@ -278,7 +278,7 @@ ${snap.errors.length ? `- Data problems: ${snap.errors.join("; ")}` : ""}
 - ${mcpNote}
 - ${finnhubEnabled() ? "Finnhub backup is available via get_earnings_and_news (earnings dates + company news for US stocks). Name Finnhub as the source when you use it." : "No Finnhub backup configured."}
 ${mcpCatalog ? `\nBITGET US-STOCK DATA CATALOG (use bitget_tool_schema then bitget_data):\n${mcpCatalog}\n` : ""}${entries ? `
-BITGET DATA ENTRIES (already discovered for you — call bitget_do_query directly with {"entry_id": "<id>", "params": {...}} built from the params hint; titles are in Chinese; call bitget_guide only if nothing below fits):
+BITGET DATA ENTRIES (already discovered for you — these ids are NOT tool names — always call the bitget_do_query tool with {"entry_id": "<id>", "params": {...}} built from the params hint (* = required); titles are in Chinese; call bitget_guide only if nothing below fits):
 ${entries.text}
 Examples:${has("equity_calendar") ? `\n- Earnings date / event risk for NVDA: bitget_do_query {"entry_id":"equity_calendar","params":{"symbol":"NVDA"}}` : ""}${has("equity_price_quote") ? `\n- Underlying US stock quote (compare with the rToken price): bitget_do_query {"entry_id":"equity_price_quote","params":{"symbol":"NVDA"}}` : ""}${has("equity_estimates_price_target") ? `\n- Analyst price targets: bitget_do_query {"entry_id":"equity_estimates_price_target","params":{"symbol":"NVDA","limit":5}}` : ""}
 Use the underlying ticker (rNVDA -> NVDA) for US-stock entries.
@@ -287,7 +287,7 @@ HOW TO WORK
 1. Plan which facts you need. Use tools to get them: simulate_trade for ANY proposed buy/sell/size question; Bitget MCP data tools for fundamentals, earnings dates, analyst targets, news and sentiment${finnhubEnabled() ? " (get_earnings_and_news from Finnhub if the MCP is down or lacks the data)" : ""}. Price stats for held instruments are already above — call get_price_history only for instruments the trader does NOT hold. You have at most ${MAX_STEPS} rounds, so request all the tools you need in parallel in one round.
 2. Never do arithmetic or statistics yourself — quote numbers returned by tools or given above. Weights, returns, volatility and drawdowns in the data are fractions (0.44 = 44%); always present them to the trader as percentages, and money as $ amounts. If data is missing, say so plainly; never invent numbers, dates or news.
 3. Tie everything to THIS trader's portfolio: concentration, overlap/correlation with what they hold, weekend/overnight exposure, event risk (e.g. earnings before the next US open).
-4. Be specific and short. Suggest a size or hedge only when the data supports it, and only after checking it with simulate_trade (use into_symbol for "trim X, move into Y"). Quote the simulated after-numbers in "hedge" and "impact"; never state a target weight you did not simulate.
+4. Be specific and short. Suggest a size or hedge only when the data supports it, and only after checking it with simulate_trade (use into_symbol for "trim X, move into Y"). Quote the simulated after-numbers in "hedge" and "impact"; never state a target weight you did not simulate. The idea must reduce the main risk you identified (e.g. a smaller size, a trim, or moving money into a less correlated holding), never add to it.
 5. Round for the reader: percentages to 1 decimal, correlations and beta to 2 decimals, dollars to whole $ (VaR to cents is fine).
 6. "watch" items must be concrete: a price level, a date, or a metric from the tools. If earnings dates or news could not be fetched, say that in "watch" instead of writing generic items.
 7. Confidence: "high" only when the key facts for the question came back from tools. If neither the Bitget MCP data server nor Finnhub returned earnings/news data, confidence is at most "medium".
@@ -429,12 +429,17 @@ export async function runAgent(input: AskInput, emit: Emit) {
         messages.push({ role: "assistant", content: res.content, tool_calls: res.toolCalls });
         const outputs = await Promise.all(
           res.toolCalls.map(async (tc: ToolCall) => {
-            const impl = byName.get(tc.function.name);
+            let impl = byName.get(tc.function.name);
             let args: Record<string, unknown> = {};
             try {
               args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
             } catch {
               /* keep {} */
+            }
+            // Models sometimes call a catalog entry id as if it were a tool: route it through do_query.
+            if (!impl && entries?.ids.has(tc.function.name) && byName.has("bitget_do_query")) {
+              impl = byName.get("bitget_do_query");
+              args = { entry_id: tc.function.name, params: args };
             }
             const started = Date.now();
             let out: unknown;
@@ -442,17 +447,17 @@ export async function runAgent(input: AskInput, emit: Emit) {
             try {
               if (!impl) throw new Error(`unknown tool ${tc.function.name}`);
               out = await impl.run(args);
-              if (tc.function.name === "simulate_trade") {
+              if (impl.def.function.name === "simulate_trade") {
                 simulated = true;
                 knownUsd.add(Math.round(Math.abs(Number(args.usd_change) || 0)));
               }
-              if (impl.source === "Finnhub" || (impl.source === "Bitget MCP" && !["bitget_tool_schema", "bitget_guide"].includes(tc.function.name))) eventDataOk = true;
+              if (impl.source === "Finnhub" || (impl.source === "Bitget MCP" && !["bitget_tool_schema", "bitget_guide"].includes(impl.def.function.name))) eventDataOk = true;
             } catch (e) {
               ok = false;
               out = { error: (e as Error).message };
             }
             step({
-              tool: tc.function.name,
+              tool: impl?.def.function.name || tc.function.name,
               source: impl?.source || "unknown",
               args,
               ok,
