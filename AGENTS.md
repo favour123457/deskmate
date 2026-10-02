@@ -37,10 +37,11 @@ The project description in the form weighs parts 1 to 3 most: **thesis**, **spec
 
 **Target user:** crypto-native students / small retail traders with ≈$100 to $5,000, holding 2 to 8 rTokens + some crypto, located outside US hours (West Africa, Asia), who trade a few times a week.
 
-**User flow:**
-1. The user enters holdings in the left panel (`rNVDA $400`, `BTC $250`…), saved in localStorage.
-2. The left panel shows **risk tiles computed in code** from live Bitget data: book value, largest holding, effective # of positions (1/HHI), BTC correlation + beta, 30-day annualized volatility, 1-day 95% historical VaR, worst Friday→Monday move, max drawdown, sector/bucket exposure bar, and a per-position 24h change.
-3. The user asks a question in the chat. The LLM runs a tool-calling loop, the **research trail streams live** into the UI, and the final **insight card** shows: verdict, risk, confidence, headline, summary, a "what changes in your book" before→after table, evidence bullets, a sizing/hedge idea, things to watch, and **"Your call"** (the human decides).
+**User flow (two routes):**
+1. **Onboarding at `/`** (`app/page.tsx`): an intro with a live canvas globe (`components/Globe.tsx`) showing the real day/night line, New York and Lagos, an arc between them, and orbiting chips with live Bitget prices. The headline follows the real US market clock (open / closed / weekend). It auto-advances after 12 s (pauses on hover/focus), then a quick-pick profile setup (`components/ProfileForm.tsx`: book size, risk appetite, weekend habit, place, notes). `lib/profile.ts` turns the answers into one sentence for the analyst and stores them in localStorage (`dm.profileAnswers`, `dm.profile`, `dm.onboarded`). Returning visitors are redirected to `/desk`; `/?intro=1` replays the intro.
+2. **The desk at `/desk`** (`app/desk/page.tsx`): the user enters holdings in the left panel (`rNVDA $400`, `BTC $250`…), saved in localStorage. The profile is edited from the **Profile** pill in the top bar (a sheet), not the sidebar.
+3. The left panel shows **risk tiles computed in code** from live Bitget data: book value, largest holding, effective # of positions (1/HHI), BTC correlation + beta, 30-day annualized volatility, 1-day 95% historical VaR, worst Friday→Monday move, max drawdown, sector/bucket exposure bar, and a per-position 24h change. Below them, **Live news & ratings** (`components/LiveResearch.tsx`): per held stock, an analyst rating bar, price-target range, next earnings date and 3 headlines, auto-refreshing every 5 min.
+4. The user asks a question in the chat. The LLM runs a tool-calling loop, the **research trail streams live** into the UI, and the final **insight card** shows: verdict, risk, confidence, headline, summary, a "what changes in your book" before→after table, evidence bullets, a sizing/hedge idea, things to watch, and **"Your call"** (the human decides).
 
 ---
 
@@ -61,25 +62,35 @@ Next.js 15 (App Router) · React 19 · TypeScript (strict) · plain CSS (`app/gl
 
 ```
 app/
-  page.tsx                 Client UI: state, NDJSON stream reader, layout, suggestion chips
-  layout.tsx, globals.css  Shell + all styles (responsive at 900px)
+  page.tsx                 Onboarding (route /): live globe intro + profile setup; returning users -> /desk
+  desk/page.tsx            The desk (route /desk): state, NDJSON stream reader, layout, suggestion chips, Profile sheet
+  layout.tsx, globals.css  Shell + all styles (responsive at 900px); Bricolage Grotesque (@fontsource-variable) for headings
   api/portfolio/route.ts   POST {holdings} -> {metrics, resolved, errors, clock}
-  api/ask/route.ts         POST {question, holdings, profile, history} -> NDJSON stream of StreamEvent
-  api/health/route.ts      GET -> Bitget REST ok?, MCP tool names, configured LLM providers
+  api/ask/route.ts         POST {question, holdings, profile, history} -> NDJSON stream of StreamEvent (maxDuration 120)
+  api/research/route.ts    POST {symbols} -> per-stock briefs for the live news & ratings cards (crypto skipped)
+  api/health/route.ts      GET -> Bitget REST ok?, MCP tool names, Finnhub configured?, LLM providers; ?catalog=1 adds MCP schemas + catalog
 components/
-  PortfolioPanel.tsx       Holdings editor, risk tiles, exposure bar, "About you" profile
+  Globe.tsx                Canvas globe (no map lib; land = precomputed dots in lib/geo/land-dots.json), respects reduced motion
+  ProfileForm.tsx          Quick-pick profile questions (onboarding + desk sheet)
+  PortfolioPanel.tsx       Holdings editor, risk tiles, exposure bar, positions, LiveResearch
+  LiveResearch.tsx         Live news & ratings cards, 5-min auto refresh, each part names its source
   InsightCard.tsx          Final answer card (verdict/risk badges, impact table, evidence, hedge, watch, Your call, trail)
   Trail.tsx                List of tool steps (dot, tool name, source, ms, summary)
 lib/
   types.ts                 Shared types: Holding, Resolved, PortfolioMetrics, TrailStep, Insight, StreamEvent
   bitget.ts                Bitget public REST: symbol resolution, tickers, daily candles, sector buckets
   stats.ts                 PURE math: returns alignment, std, corr, beta, percentile, drawdown, weekend returns, computeMetrics()
-  portfolio.ts             snapshot(), simulateTrade() (before/after), priceHistorySummary()
+  portfolio.ts             snapshot(), simulateTrade() (before/after, optional into_symbol rebalance), priceHistorySummary()
   mcp.ts                   Bitget MCP client (streamable HTTP), tool list cache, callMcp() with reconnect
-  llm.ts                   OpenAI-compatible /chat/completions client + provider presets + ordering
-  agent.ts                 System prompt, tool registry, tool-calling loop, provider fallback, JSON extraction, normalize()
+  mcp-catalog.ts           Loads the Bitget MCP catalog (guide/do_query) once, 6 h cache, compact list for the prompt
+  finnhub.ts               Finnhub: earnings calendar, analyst recommendation counts, filtered company news
+  research.ts              stockBrief(): rating + earnings + news (Finnhub) and price targets (Bitget MCP), 5 min cache
+  profile.ts               Profile answers -> analyst sentence; localStorage helpers
+  llm.ts                   OpenAI-compatible client, provider presets, comma-list model fallback, 503/429 retry, daily-quota cooldown
+  agent.ts                 System prompt, tool registry, tool-calling loop, provider fallback, hedge guard, JSON extraction, normalize()
   market-clock.ts          US market open/closed status in ET (ignores holidays)
-scripts/check.mjs          `npm run check`: tests Bitget REST, lists rTokens, lists MCP tools (writes mcp-tools.json), tests each LLM key incl. tool-calling
+scripts/check.mjs          `npm run check`: Bitget REST + rToken count, MCP tools (writes mcp-tools.json), Finnhub, each LLM key incl. tool-calling
+vercel.json                Fluid compute on, region iad1 (US). Live: https://deskmate-two.vercel.app (auto-deploys from main)
 .env.example               All env vars, documented
 ```
 
@@ -87,17 +98,18 @@ scripts/check.mjs          `npm run check`: tests Bitget REST, lists rTokens, li
 | Source | Used for | Auth |
 |---|---|---|
 | Bitget public REST `https://api.bitget.com` | tickers + daily candles for rTokens (spot `R{TICKER}USDT`), US stock perps (`{TICKER}USDT`, `USDT-FUTURES`), crypto (`BTCUSDT`) | none |
-| Bitget MCP `https://agent.bitget.com/mcp` (streamable HTTP) | US stock/ETF fundamentals, earnings calendar, analyst targets, 13F, insider trades, news, sentiment | none |
+| Bitget MCP `https://agent.bitget.com/mcp` (streamable HTTP) | a **catalog API** with 2 tools: `guide({category?, subcategory?, keyword?})` lists entries, `do_query({entry_id, params})` runs one. 67 free entries (equity 22, crypto 39, etf 3, sentiment 2, news 1), e.g. `equity_calendar`, `equity_price_quote`, `equity_estimates_price_target`, `equity_fundamental_*`, `equity_ownership_*`, `crypto_etf_flows`. Titles are in Chinese; `params_summary` = `[{name, required, type}]`. `news_label_search` needs an undocumented integer tag, so it's left out of the prompt. Unreachable from the owner's local network, works from Vercel. | none |
+| Finnhub `https://finnhub.io/api/v1` | company news (filtered to headlines naming the company), monthly analyst recommendation counts, earnings calendar. Free tier has **no** price targets / upgrades (403) | `FINNHUB_API_KEY` |
 | LLM (OpenAI-compatible) | planning, tool calls, writing the insight | key in `.env.local` |
 
 **Symbol resolution** (`lib/bitget.ts → candidates()`): the user types `rNVDA`, `NVDA`, `RNVDA` or `BTC`. The code tries, in order, crypto spot `BTCUSDT`, rToken spot `RNVDAUSDT`, raw spot `{INPUT}USDT`, then futures `NVDAUSDT`, and uses the first one that returns a ticker.
 
 ### Agent loop (`lib/agent.ts → runAgent`)
-1. Emit `portfolio_snapshot` (REST + math) and `connect_bitget_mcp` steps.
-2. Tools: `simulate_trade(symbol, usd_change)`, `get_price_history(symbol)`, plus the MCP tools. If there are ≤ `MCP_DIRECT_MAX` (20) MCP tools, each one is exposed directly as `bitget_<name>`. Otherwise the app uses **catalog mode**: the catalog goes in the system prompt, and the model calls `bitget_tool_schema(tool)` and `bitget_data(tool, arguments)`.
-3. The loop runs up to `AGENT_MAX_STEPS` (7). Tool calls run in parallel, results are truncated to `TOOL_RESULT_CHARS`, and each call is streamed as a `step` event.
-4. The final answer must be a JSON object (the schema is in the system prompt). It is parsed with `extractJson()`, with one repair retry, then passed through `normalize()` into `Insight`.
-5. Provider fallback: on any error, move to the next provider in `LLM_PROVIDERS` and keep the same messages. If every provider fails, the result is `numbersOnly()`.
+1. Emit `portfolio_snapshot` (REST + math), `price_stats` (stats for every held instrument go straight into the prompt), `connect_bitget_mcp` and, if the MCP has `guide`/`do_query`, `load_bitget_catalog` (a compact entry list + `do_query` examples go into the prompt, so the model fetches data in round 1 instead of browsing).
+2. Tools: `simulate_trade(symbol, usd_change, into_symbol?)`, `get_price_history(symbol)` (only for instruments not held), `get_earnings_and_news(symbol)` (Finnhub, if keyed), plus the MCP tools (`bitget_guide`, `bitget_do_query` in direct mode; catalog meta-tools if there were > `MCP_DIRECT_MAX`). A catalog entry id called as if it were a tool is routed to `do_query`.
+3. The loop runs up to `AGENT_MAX_STEPS` (default **4**). Tool calls run in parallel, results are truncated to `TOOL_RESULT_CHARS`, and each call is streamed as a `step` event. On the last round the model is told it is out of rounds.
+4. The final answer must be a JSON object (the schema is in the system prompt), parsed with `extractJson()`. An empty answer gets one repair retry, then falls back to numbers-only. **Hedge guard:** any `$` amount in `hedge` that isn't a simulated trade size (or the book total), or a `%` target with no simulation at all, sends the model back once to run `simulate_trade` (the step budget is extended for it). Confidence is capped at "medium" unless MCP or Finnhub event data came back.
+5. Provider fallback: on any error, move to the next provider/model in `LLM_PROVIDERS` and keep the same messages. If every provider fails, the result is `numbersOnly()`.
 
 ### LLM providers (`lib/llm.ts`)
 Default order: `qwen, gemini, deepseek, groq, openrouter, custom`, and only providers with a key set are used. Presets:
@@ -111,35 +123,29 @@ Each preset's model can be overridden with `{PROVIDER}_MODEL`. The default model
 
 ---
 
-## 5. Current status (as of 30 Sep 2026)
+## 5. Current status (as of 2 Oct 2026)
 
-**Done and verified against local mocks** (mock Bitget REST, a mock MCP server built with the SDK, and a mock LLM):
-- `next build` passes (strict TS).
-- Portfolio math is correct (e.g. adding $200 to a $400/$900 position gives a 44.4% → 54.5% weight).
-- The agent loop works: parallel tools, MCP direct mode **and** catalog mode, provider fallback (a bad Groq endpoint switched to the next provider), JSON extraction, and the numbers-only degraded mode.
-- The UI renders correctly at 1440px and 390px (mobile).
-
-**NOT yet verified against the real services.** The build machine could not reach Bitget. Before anything else:
-1. **rToken symbol names:** are they really `RNVDAUSDT` etc. on spot? `npm run check` lists every `R*USDT` online spot pair. Adjust `candidates()` if the naming differs.
-2. **Candle format/order:** we assume `/api/v2/spot/market/candles` returns `[ts, o, h, l, c, …]` strings. The code sorts by timestamp anyway, but confirm `close` is index 4 and `granularity=1day` is valid.
-3. **Real MCP tool names and schemas:** check the `mcp-tools.json` written by `npm run check`. Then tune the system prompt's "HOW TO WORK" section to name the actual tools (e.g. which one gives the earnings calendar). Confirm that direct vs. catalog mode behaves well given the real tool count.
-4. **LLM model names and tool-calling:** `npm run check` tests each key with a tool call. Update the default model names in `lib/llm.ts` and `scripts/check.mjs` if needed.
-5. **Serverless MCP sessions on Vercel:** the client caches a connection per instance and reconnects once on failure. Verify on the deployed app.
+Verified against the **real services** and live on Vercel (https://deskmate-two.vercel.app). Details, test results and the challenge log are in `docs/PROGRESS.md`; keep that file updated.
+- rToken symbols are `R{TICKER}USDT` on spot (base coin `rNVDA`, `areaSymbol: "yes"`, 2,810 online). Candles parse correctly.
+- Bitget MCP works from Vercel (catalog API, see Data sources). Finnhub is keyed locally and on Vercel.
+- LLM: only Gemini is keyed (`gemini-3.5-flash` → `gemini-3.5-flash-lite`). Free-tier Flash allows **20 requests/day**, so Flash-Lite answers most questions. DeepSeek / Qwen keys still to add.
+- Live answers take ~6–42 s in 1–2 research rounds, with real earnings dates, quotes and analyst targets, and every sizing idea simulated.
+- UI: onboarding at `/`, desk at `/desk`; checked at 1440px and 390px.
 
 ---
 
 ## 6. Next tasks (priority order)
 
 **P0: make it real (30 Sep to 2 Oct)**
-- [ ] Run `npm run check` on a machine with internet access and fix symbol resolution, candle parsing and model names based on its output.
-- [ ] Rewrite the system prompt's tool guidance using the real MCP tool names. Add 2 or 3 few-shot hints (e.g. "for earnings risk call X with {symbol}").
+- [x] Run `npm run check` on a machine with internet access and fix symbol resolution, candle parsing and model names based on its output.
+- [x] Rewrite the system prompt's tool guidance using the real MCP tool names. Add 2 or 3 few-shot hints (e.g. "for earnings risk call X with {symbol}").
 - [ ] Ask the 4 suggestion-chip questions against live data; fix any bad JSON, wrong units (fractions vs %), or hallucinated numbers.
 
 **P1: research depth (3 to 4 Oct)**
 - [ ] Add a **"weekend / closure risk" tool**: hourly candles over the last N weekends for the held rTokens → typical Fri-close→Mon-open gap, and how much of the weekend move reversed at the US open. This is the product's signature insight. Use code, not the LLM, and be honest if the edge is weak.
 - [ ] Add a **"scenario" tool**: "if BTC −10% / NASDAQ −3%", using beta-based estimated P&L per position (computed from `stats.ts`).
 - [ ] Optionally add `bitget-signal` Skills (macro-analyst, sentiment-analyst, news-briefing) from Bitget Agent Hub as extra data sources. This helps the "feature depth" score. See https://github.com/Bitget-AI/agent_hub. Read-only only.
-- [ ] Add an earnings-date badge on positions if the MCP provides it.
+- [x] Earnings date per held stock (Live news & ratings card, Finnhub).
 
 **P2: LUI and polish (5 Oct)**
 - [ ] Stream the final text too, or show a "drafting answer" state.
@@ -151,7 +157,7 @@ Each preset's model can be overridden with `{PROVIDER}_MODEL`. The default model
 **P3: validation + submission (6 to 7 Oct)**
 - [ ] Add lightweight anonymous usage logging (questions asked, tools used, completed vs. failed, latency) to a JSON file or a free KV store, so the form's "validation data" section has real numbers. **No personal data.**
 - [ ] Test with 5 to 10 classmates; record task completion rate and feedback.
-- [ ] Deploy to Vercel with env vars, and confirm `/api/health` is all green on the live URL.
+- [x] Deploy to Vercel with env vars, and confirm `/api/health` is all green on the live URL.
 - [ ] Write `docs/SUBMISSION.md` containing the 6-part description draft + the "Role of the LLM" text + a deliverables list. Record the 2 to 3 minute demo video.
 
 ---

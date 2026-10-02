@@ -29,6 +29,8 @@ Last updated: **2 Oct 2026 (Lagos, UTC+1)**. Session 2 is at the top; session 1 
 
 **Live news & ratings (2 Oct):** `FINNHUB_API_KEY` is set locally and on Vercel. Finnhub free tier: ✅ company news, ✅ monthly recommendation counts, ✅ earnings calendar; ❌ price targets and upgrades/downgrades (403, paid). New `/api/research` + `components/LiveResearch.tsx`: a card per held stock (crypto skipped) showing an analyst rating bar (Finnhub), price-target range + firms (Bitget MCP `equity_estimates_price_target`, fields `analyst_firm`, `price_target`, `published_date`), the next earnings date with an amber chip within 7 days (Finnhub), and 3 headlines that mention the company (Finnhub's feed is noisy, so they're filtered by ticker or company name). 5 min cache + auto-refresh; each part names its source and shows its own error. Verified live: NVDA targets $300–$390, earnings 17 Nov; TSLA targets $25–$475 (GLJ Research's $24.86 is real), earnings 20 Oct. The agent's Finnhub tool now also returns rating counts.
 
+**Onboarding UI (2 Oct):** the owner's `onboarding.patch` was applied with `git am`. `/` is now the onboarding (live day/night globe, NY↔Lagos arc, live Bitget price chips, a headline following the US clock, a quick-pick profile) and the desk moved to `/desk`; the profile is a sheet opened from the top-bar pill. Added dependency: `@fontsource-variable/bricolage-grotesque`. Follow-up fixes: "1 minutes" → "1 minute", and the globe canvas no longer overflows the screen on mobile (edge chips were clipped). Checked at 1440px and 390×844.
+
 **Still open:** generic watch items sometimes ("tech sector headlines"); Gemini Flash daily quota; Qwen credits; `docs/PROGRESS.md` must keep being updated.
 
 ---

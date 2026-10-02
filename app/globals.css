@@ -339,7 +339,7 @@ details.trail-box .trail { margin-top: 8px; }
 
 @media (max-width: 900px) {
   .ob-main { grid-template-columns: 1fr; gap: 0; padding-bottom: 28px; }
-  .ob-visual { order: -1; margin: -12px -16px 4px; }
+  .ob-visual { order: -1; margin: -12px 0 4px; }
   .ob-globe { max-height: 52vh; }
   .ob-caption { display: none; }
   .ob-lede { font-size: 16px; margin-bottom: 22px; }

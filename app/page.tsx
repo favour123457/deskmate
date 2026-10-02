@@ -24,7 +24,10 @@ function useClock() {
 }
 
 function hoursText(h: number) {
-  if (h < 1) return `${Math.max(1, Math.round(h * 60))} minutes`;
+  if (h < 1) {
+    const m = Math.max(1, Math.round(h * 60));
+    return `${m} minute${m === 1 ? "" : "s"}`;
+  }
   const r = Math.round(h);
   return `${r} hour${r === 1 ? "" : "s"}`;
 }
