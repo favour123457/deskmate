@@ -398,8 +398,9 @@ export async function runAgent(input: AskInput, emit: Emit) {
 
   let pi = 0;
   let simulated = false;
-  // Dollar amounts the model may quote without simulating: simulated trade sizes, current positions, book total.
-  const knownUsd = new Set<number>([...input.holdings.map((h) => Math.round(Math.abs(h.usd))), Math.round(snap.metrics.totalUsd)]);
+  // Dollar amounts the model may quote without simulating: simulated trade sizes and the book total.
+  // (Position sizes are not exempt: "trim $100" must be simulated even if a position happens to be $100.)
+  const knownUsd = new Set<number>([Math.round(snap.metrics.totalUsd)]);
   let hedgeChecked = false;
   let eventDataOk = false; // earnings/news came back from Bitget MCP or Finnhub
   let limit = MAX_STEPS;
