@@ -31,6 +31,8 @@ Last updated: **2 Oct 2026 (Lagos, UTC+1)**. Session 2 is at the top; session 1 
 
 **Onboarding UI (2 Oct):** the owner's `onboarding.patch` was applied with `git am`. `/` is now the onboarding (live day/night globe, NY↔Lagos arc, live Bitget price chips, a headline following the US clock, a quick-pick profile) and the desk moved to `/desk`; the profile is a sheet opened from the top-bar pill. Added dependency: `@fontsource-variable/bricolage-grotesque`. Follow-up fixes: "1 minutes" → "1 minute", and the globe canvas no longer overflows the screen on mobile (edge chips were clipped). Checked at 1440px and 390×844.
 
+**Desk redesign + submission draft (7 Oct):** the owner's `docs/desk-redesign-and-submission.patch` (2 commits) was applied with `git am`. The desk now has three columns (news & ratings on the right; under the left column below 1100px; stacked on phones), larger type, a book-value hero with today's change, holdings as weight bars with an "Edit holdings" toggle, a chart of today's book vs BTC over the candle window (indexed to 100; `metrics.history`, not sent to the LLM), plain-English risk rows, and "What moves together". Added `docs/SUBMISSION.md` (form answers, Role of the LLM, X post). Build passes; checked at 1440, 1200, 1000 and 390px.
+
 **Still open:** generic watch items sometimes ("tech sector headlines"); Gemini Flash daily quota; Qwen credits; `docs/PROGRESS.md` must keep being updated.
 
 ---
