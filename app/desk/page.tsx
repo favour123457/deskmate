@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { InsightCard } from "@/components/InsightCard";
 import { PortfolioPanel } from "@/components/PortfolioPanel";
 import { Trail } from "@/components/Trail";
+import { LiveResearch } from "@/components/LiveResearch";
 import { ProfileForm } from "@/components/ProfileForm";
 import { DEFAULT_ANSWERS, loadAnswers, profileSummary, profileText, saveAnswers, type ProfileAnswers } from "@/lib/profile";
 import type { Holding, Insight, PortfolioMetrics, StreamEvent, TrailStep } from "@/lib/types";
@@ -155,6 +156,7 @@ export default function Desk() {
   };
 
   const llmOk = !!health?.llm.length;
+  const stockSymbols = metrics ? metrics.positions.filter((p) => p.bucket !== "Crypto" && p.bucket !== "Other").map((p) => p.display) : [];
 
   return (
     <div className="shell">
@@ -163,7 +165,7 @@ export default function Desk() {
           <div className="logo">D</div>
           <div style={{ minWidth: 0 }}>
             <h1>Deskmate</h1>
-            <p>AI research desk for tokenized US stocks + crypto · you make the call</p>
+            <p>AI research desk for tokenized US stocks and crypto. You make the call.</p>
           </div>
         </div>
         <div className="status">
@@ -241,6 +243,9 @@ export default function Desk() {
             <p className="disclaimer">Research tool, not financial advice. Deskmate never places orders.</p>
           </div>
         </section>
+        <aside className="news-col" aria-label="Live news and ratings">
+          <LiveResearch symbols={stockSymbols} />
+        </aside>
       </main>
 
       {editing && (

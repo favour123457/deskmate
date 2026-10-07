@@ -170,5 +170,18 @@ export function computeMetrics(
     correlations: correlations.slice(0, 6),
     window: dates.length ? { from: dates[0], to: dates[dates.length - 1], days: dates.length } : null,
     warnings,
+    history: indexHistory(dates, port, btcR),
   };
+}
+
+function indexHistory(dates: string[], port: number[], btc: number[] | undefined) {
+  if (!port.length) return [];
+  let b = 100, c = 100;
+  const out: { date: string; book: number; btc: number | null }[] = [];
+  for (let i = 0; i < port.length; i++) {
+    b *= 1 + port[i];
+    if (btc && Number.isFinite(btc[i])) c *= 1 + btc[i];
+    out.push({ date: dates[i], book: Number(b.toFixed(2)), btc: btc ? Number(c.toFixed(2)) : null });
+  }
+  return out;
 }

@@ -18,8 +18,8 @@ export function InsightCard({
       <header className="insight-head">
         <div className="badges">
           <span className={`badge v-${insight.verdict}`}>{VERDICT_LABEL[insight.verdict]}</span>
-          <span className={`badge r-${insight.risk}`}>{insight.risk} risk</span>
-          <span className="badge conf">{insight.confidence} confidence</span>
+          <span className={`badge r-${insight.risk}`}>{insight.risk[0].toUpperCase() + insight.risk.slice(1)} risk</span>
+          <span className="badge conf">{insight.confidence[0].toUpperCase() + insight.confidence.slice(1)} confidence</span>
         </div>
         <h3>{insight.headline}</h3>
         {insight.summary && <p className="summary">{insight.summary}</p>}

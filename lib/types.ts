@@ -41,6 +41,8 @@ export type PortfolioMetrics = {
   correlations: { a: string; b: string; rho: number }[];
   window: { from: string; to: string; days: number } | null;
   warnings: string[];
+  /** Value of the CURRENT book over the window if held at today's weights, indexed to 100; BTC on the same base. */
+  history: { date: string; book: number; btc: number | null }[];
 };
 
 export type TrailStep = {
