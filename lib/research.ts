@@ -2,7 +2,7 @@
 // next earnings (Finnhub) and the newest relevant headlines (Finnhub). Every part names its source and
 // reports its own error instead of being filled in.
 import { resolveSymbol } from "./bitget";
-import { earnings, finnhubEnabled, recommendation, relevantNews, stockTicker } from "./finnhub";
+import { companyInfo, earnings, finnhubEnabled, recommendation, relevantNews, stockTicker } from "./finnhub";
 import { callMcp, mcpTools } from "./mcp";
 
 export type PriceTarget = { firm: string; target: number; date: string };
@@ -10,6 +10,7 @@ export type PriceTarget = { firm: string; target: number; date: string };
 export type StockBrief = {
   symbol: string; // as the user holds it, e.g. rNVDA
   ticker: string; // underlying, e.g. NVDA
+  name: string | null; // company name (Finnhub profile)
   rating: { period: string; strongBuy: number; buy: number; hold: number; sell: number; strongSell: number; total: number; source: "Finnhub" } | null;
   targets: { items: PriceTarget[]; low: number; high: number; source: "Bitget MCP" } | null;
   earnings: { date: string; when: string; daysUntil: number; epsEstimate: number | null; source: "Finnhub" } | null;
@@ -53,16 +54,18 @@ export async function stockBrief(raw: string): Promise<StockBrief> {
   const fh = finnhubEnabled();
   if (!fh) errors.push("Finnhub key not configured: no rating, earnings or news");
 
-  const [rating, targets, earn, news] = await Promise.all([
+  const [rating, targets, earn, news, info] = await Promise.all([
     fh ? recommendation(ticker).catch((e) => (errors.push(`rating: ${e.message}`), null)) : null,
     priceTargets(ticker).catch((e) => (errors.push(`price targets: ${e.message}`), [] as PriceTarget[])),
     fh ? earnings(ticker).catch((e) => (errors.push(`earnings: ${e.message}`), null)) : null,
-    fh ? relevantNews(ticker, 3).catch((e) => (errors.push(`news: ${e.message}`), [])) : [],
+    fh ? relevantNews(ticker, 4).catch((e) => (errors.push(`news: ${e.message}`), [])) : [],
+    fh ? companyInfo(ticker) : null,
   ]);
 
   const value: StockBrief = {
     symbol: display,
     ticker,
+    name: info?.name ?? null,
     rating: rating && rating.total > 0 ? { ...rating, source: "Finnhub" } : null,
     targets: targets.length
       ? { items: targets, low: Math.min(...targets.map((t) => t.target)), high: Math.max(...targets.map((t) => t.target)), source: "Bitget MCP" }

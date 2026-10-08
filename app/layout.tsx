@@ -1,19 +1,25 @@
-import "@fontsource-variable/bricolage-grotesque";
-import "@fontsource-variable/figtree";
+import "@fontsource-variable/suse-mono";
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { Nav } from "@/components/Nav";
+import { StoreProvider } from "@/lib/store";
 
 export const metadata: Metadata = {
-  title: "Lamplight: research your trades while New York sleeps",
-  description: "Ask a question about your rToken + crypto book. Lamplight researches with live Bitget data and shows you the risk. You make the call.",
+  title: "Quil: research your trades while New York sleeps",
+  description: "An AI research desk for Bitget tokenized US stocks and crypto. Ask about a trade, see exactly what it does to your book. You make the call.",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#070d1a" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#000000" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <StoreProvider>
+          <Nav />
+          {children}
+        </StoreProvider>
+      </body>
     </html>
   );
 }

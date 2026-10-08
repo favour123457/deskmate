@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   const stocks = symbols.filter((s) => !["Crypto", "Other"].includes(bucketFor(s)));
   const briefs = await Promise.all(
     stocks.map((s) =>
-      stockBrief(s).catch((e) => ({ symbol: s, ticker: s, rating: null, targets: null, earnings: null, news: [], newsSource: null, errors: [(e as Error).message] })),
+      stockBrief(s).catch((e) => ({ symbol: s, ticker: s, name: null, rating: null, targets: null, earnings: null, news: [], newsSource: null, errors: [(e as Error).message] })),
     ),
   );
   return Response.json({ briefs, skipped: symbols.filter((s) => !stocks.includes(s)), at: Date.now() });

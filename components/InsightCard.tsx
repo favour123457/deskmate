@@ -1,84 +1,80 @@
 "use client";
+// The analyst's answer. Flat: a meta line, headline, summary, then hairline-separated sections.
+// Colour only where it carries meaning (verdict, before/after direction).
 import type { Insight, TrailStep } from "@/lib/types";
 import { Trail } from "./Trail";
+import { Chevron } from "./Icons";
 
-const VERDICT_LABEL: Record<Insight["verdict"], string> = {
-  proceed: "Looks OK",
-  proceed_smaller: "Smaller size",
-  wait: "Wait",
-  avoid: "Avoid",
-  info: "Research",
+const VERDICT: Record<Insight["verdict"], { label: string; tone: string }> = {
+  proceed: { label: "Looks OK", tone: "up" },
+  proceed_smaller: { label: "Smaller size", tone: "fg" },
+  wait: { label: "Wait", tone: "fg" },
+  avoid: { label: "Avoid", tone: "down" },
+  info: { label: "Research", tone: "fg" },
 };
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 
-export function InsightCard({
-  insight, steps, provider, degraded,
-}: { insight: Insight; steps: TrailStep[]; provider: string | null; degraded: boolean }) {
+export function InsightCard({ insight, steps, provider, degraded }: { insight: Insight; steps: TrailStep[]; provider: string | null; degraded: boolean }) {
+  const v = VERDICT[insight.verdict];
   return (
-    <article className="insight">
-      <header className="insight-head">
-        <div className="badges">
-          <span className={`badge v-${insight.verdict}`}>{VERDICT_LABEL[insight.verdict]}</span>
-          <span className={`badge r-${insight.risk}`}>{insight.risk[0].toUpperCase() + insight.risk.slice(1)} risk</span>
-          <span className="badge conf">{insight.confidence[0].toUpperCase() + insight.confidence.slice(1)} confidence</span>
-        </div>
-        <h3>{insight.headline}</h3>
-        {insight.summary && <p className="summary">{insight.summary}</p>}
-        {degraded && <p className="degraded">AI analyst unavailable. Showing computed numbers only.</p>}
-      </header>
+    <article className="answer">
+      <p className="answer-meta">
+        <span className={v.tone}>{v.label}</span>
+        <span>{cap(insight.risk)} risk</span>
+        <span>{cap(insight.confidence)} confidence</span>
+      </p>
+      <h2 className="answer-h">{insight.headline}</h2>
+      {insight.summary && <p className="answer-sum">{insight.summary}</p>}
+      {degraded && <p className="answer-warn">The AI analyst was unavailable, so these are the computed numbers only.</p>}
 
-      <div className="insight-body">
-        {insight.impact.length > 0 && (
-          <section>
-            <p className="sec-title">What changes in your book</p>
-            <table className="impact">
-              <thead>
-                <tr><th>Metric</th><th className="n">Now</th><th /><th className="n">After</th></tr>
-              </thead>
-              <tbody>
-                {insight.impact.map((r, i) => (
-                  <tr key={i}>
-                    <td>{r.metric}</td>
-                    <td className="n muted">{r.before}</td>
-                    <td className="arrow">→</td>
-                    <td className="n after">{r.after}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
+      {insight.impact.length > 0 && (
+        <section className="answer-sec">
+          <h3>What changes in your book</h3>
+          <table className="impact">
+            <thead><tr><th /><th className="n">Now</th><th className="n">After</th></tr></thead>
+            <tbody>
+              {insight.impact.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.metric}</td>
+                  <td className="n faint">{r.before}</td>
+                  <td className="n">{r.after}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
-        {insight.findings.length > 0 && (
-          <section>
-            <p className="sec-title">Evidence</p>
-            <ul className="findings">{insight.findings.map((f, i) => <li key={i}>{f}</li>)}</ul>
-          </section>
-        )}
+      {insight.findings.length > 0 && (
+        <section className="answer-sec">
+          <h3>Evidence</h3>
+          <ul className="findings">{insight.findings.map((f, i) => <li key={i}>{f}</li>)}</ul>
+        </section>
+      )}
 
-        {insight.hedge && (
-          <section>
-            <p className="sec-title">Sizing / hedge idea</p>
-            <div className="hedge">{insight.hedge}</div>
-          </section>
-        )}
+      {insight.hedge && (
+        <section className="answer-sec">
+          <h3>Sizing idea</h3>
+          <p className="hedge">{insight.hedge}</p>
+        </section>
+      )}
 
-        {insight.watch.length > 0 && (
-          <section>
-            <p className="sec-title">Watch</p>
-            <div className="watch">{insight.watch.map((w, i) => <span key={i}>{w}</span>)}</div>
-          </section>
-        )}
-      </div>
+      {insight.watch.length > 0 && (
+        <section className="answer-sec">
+          <h3>Watch</h3>
+          <ul className="findings">{insight.watch.map((w, i) => <li key={i}>{w}</li>)}</ul>
+        </section>
+      )}
 
-      <div className="decision">
-        <b>Your call</b>
-        <span>{insight.decisionNote}</span>
-      </div>
+      <section className="answer-sec decision">
+        <h3>Your call</h3>
+        <p>{insight.decisionNote}</p>
+      </section>
 
       {steps.length > 0 && (
         <details className="trail-box">
           <summary>
-            Research trail · {steps.length} steps{provider ? ` · ${provider}` : ""}
+            <Chevron /> Research trail, {steps.length} steps{provider ? `, ${provider}` : ""}
           </summary>
           <Trail steps={steps} />
         </details>

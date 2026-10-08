@@ -31,20 +31,18 @@ The project description in the form weighs parts 1 to 3 most: **thesis**, **spec
 
 ---
 
-## 2. The product: Lamplight
+## 2. The product: Quil
 
-**Thesis:** rTokens trade 7×24 but the US cash market doesn't. From Lagos, the US session closes at 21:00 and doesn't reopen until Monday afternoon. Small traders hold rTokens + crypto through those gaps with no desk, no risk system, and no analyst, and they often concentrate into one tech name that moves together with BTC without realizing it. Generic chatbots answer "should I buy NVDA?" in general terms; Lamplight answers **"what does buying $200 of rNVDA do to *my* book, right now, before a weekend with no US reference price?"**
+**Thesis:** rTokens trade 7×24 but the US cash market doesn't. From Lagos, the US session closes at 21:00 and doesn't reopen until Monday afternoon. Small traders hold rTokens + crypto through those gaps with no desk, no risk system, and no analyst, and they often concentrate into one tech name that moves together with BTC without realizing it. Generic chatbots answer "should I buy NVDA?" in general terms; Quil answers **"what does buying $200 of rNVDA do to *my* book, right now, before a weekend with no US reference price?"**
 
 **Target user:** crypto-native students / small retail traders with ≈$100 to $5,000, holding 2 to 8 rTokens + some crypto, located outside US hours (West Africa, Asia), who trade a few times a week.
 
-**User flow (two routes):**
-1. **Onboarding at `/`** (`app/page.tsx`): an intro with a live canvas globe (`components/Globe.tsx`) showing the real day/night line, New York and Lagos, an arc between them, and orbiting chips with live Bitget prices. The headline follows the real US market clock (open / closed / weekend). It auto-advances after 12 s (pauses on hover/focus), then a quick-pick profile setup (`components/ProfileForm.tsx`: book size, risk appetite, weekend habit, place, notes). `lib/profile.ts` turns the answers into one sentence for the analyst and stores them in localStorage (`dm.profileAnswers`, `dm.profile`, `dm.onboarded`). Returning visitors are redirected to `/desk`; `/?intro=1` replays the intro.
-2. **The app at `/desk`** (`app/desk/page.tsx`) has three tabs in the top bar (URL hash `#portfolio`, `#news`):
-   - **Desk:** a collapsible side panel (your book with weight bars + "Risk at a glance": biggest holding, link to BTC, bad-day loss; starts hidden on phones), the chat, and a one-line **news strip** above the chat.
-   - **Portfolio:** holdings editor, 90-day chart (book vs BTC, indexed to 100), every risk number in plain words, what moves together.
-   - **News:** a card per held stock (analyst ratings, price targets, earnings date, headlines).
-   The top bar shows data sources as plain names (`SourceMark`); if `public/logos/{bitget,finnhub,gemini}.svg` exist, the official logos appear next to the names. The profile is edited from **Profile** in the top bar (a sheet).
-3. All numbers are **computed in code** from live Bitget data: book value, largest holding, effective # of positions (1/HHI), BTC correlation + beta, 30-day volatility, 1-day 95% historical VaR, worst Friday→Monday move, max drawdown, pairwise correlation.
+**User flow (four routes, one shared store `lib/store.tsx` in the root layout, so the book, profile and chat survive navigation):**
+1. **Home `/`** (`app/page.tsx`): the landing page. A headline that follows the live New York session, the monochrome globe (`components/Globe.tsx`: dotted land lit by the real sun, wireframe graticule, the day/night line as one white great circle, a New York crosshair, live Bitget tickers orbiting as plain text), a four-step "how it works" row, and **Tell the analyst about you** (`components/ProfileSetup.tsx`): numbered rows with sliding segmented controls (book size, risk, weekend habit, place, notes), saved automatically, next to a live preview of the exact sentence the analyst reads (`lib/profile.ts`).
+2. **Ask `/ask`**: the chat only. Suggested questions as a 2x2 grid of boxes; answers stream in with the research trail.
+3. **Portfolio `/portfolio`**: book value + today's change, holdings editor, full-width chart (book vs BTC, indexed to 100), holdings table with real company logos, what moves together, and every risk number in plain words.
+4. **News `/news`**: one block per held stock (logo, name, analyst rating counts, price targets, next earnings) next to its latest headlines; refreshes silently every 5 min.
+   `/desk` (and `/desk#portfolio`, `/desk#news`) redirect to the new routes. Market status and data sources are a plain-text footer line (`components/StatusLine.tsx`), not in the nav.
 4. The user asks a question in the chat. The LLM runs a tool-calling loop, the **research trail streams live** into the UI, and the final **insight card** shows: verdict, risk, confidence, headline, summary, a "what changes in your book" before→after table, evidence bullets, a sizing/hedge idea, things to watch, and **"Your call"** (the human decides).
 
 ---
@@ -66,20 +64,23 @@ Next.js 15 (App Router) · React 19 · TypeScript (strict) · plain CSS (`app/gl
 
 ```
 app/
-  page.tsx                 Onboarding (route /): live globe intro + profile setup; returning users -> /desk
-  desk/page.tsx            The desk (route /desk): state, NDJSON stream reader, layout, suggestion chips, Profile sheet
-  layout.tsx, globals.css  Shell + all styles (responsive at 900px); Bricolage Grotesque (@fontsource-variable) for headings
+  page.tsx                 Home (route /): hero + globe + how it works + profile setup
+  ask/ portfolio/ news/    The three other routes (page.tsx each); desk/page.tsx redirects old /desk links
+  layout.tsx, globals.css  Root layout (StoreProvider + Nav) and all styles; SUSE Mono (@fontsource-variable/suse-mono)
+  api/logo/[ticker]        GET -> 302 to the company's official logo (Finnhub profile2), or 404
   api/portfolio/route.ts   POST {holdings} -> {metrics, resolved, errors, clock}
   api/ask/route.ts         POST {question, holdings, profile, history} -> NDJSON stream of StreamEvent (maxDuration 120)
   api/research/route.ts    POST {symbols} -> per-stock briefs for the live news & ratings cards (crypto skipped)
   api/health/route.ts      GET -> Bitget REST ok?, MCP tool names, Finnhub configured?, LLM providers; ?catalog=1 adds MCP schemas + catalog
 components/
   Globe.tsx                Canvas globe (no map lib; land = precomputed dots in lib/geo/land-dots.json), respects reduced motion
-  ProfileForm.tsx          Quick-pick profile questions (onboarding + desk sheet)
-  Logo.tsx                 Lamplight mark (lamp flame with a rising line) + wordmark; BRAND constant. Favicon: app/icon.svg
-  Portfolio.tsx            BookCard (holdings + editor), Glance (3 key numbers), ChartCard, RiskCard, PairsCard, PortfolioView
-  NewsTicker.tsx           One-headline-at-a-time strip across the top of the chat (pauses on hover)
-  LiveResearch.tsx         NewsView (the News page) + Brief card; data from lib/useResearch.ts (one shared 5-min fetch)
+  Brand.tsx                Quil feather mark (custom SVG) + wordmark; BRAND constant. Favicon: app/icon.svg
+  Nav.tsx                  Top nav: brand (links home) + centred Home / Ask / Portfolio / News, sliding underline (motion)
+  StatusLine.tsx           Footer line: New York session status, data sources, "never places orders"
+  ProfileSetup.tsx         Numbered profile rows with segmented controls + live analyst-brief preview
+  AssetLogo.tsx            Company logo on a white tile via /api/logo/[ticker] (Finnhub profile), monogram fallback
+  Icons.tsx                Small SVG line icons (no emoji, no icon font)
+  BookChart.tsx            SVG line chart, book (white) vs BTC (grey), hover tooltip
   InsightCard.tsx          Final answer card (verdict/risk badges, impact table, evidence, hedge, watch, Your call, trail)
   Trail.tsx                List of tool steps (dot, tool name, source, ms, summary)
 lib/
@@ -181,6 +182,6 @@ npm run build                # must pass before any commit
 
 - Keep `lib/stats.ts` pure (no network), so it stays easy to unit-test. If you add tests, test against known numbers there.
 - To test offline, set `BITGET_API_BASE`, `BITGET_MCP_URL` and `LLM_BASE_URL` to local mock servers (this is how v0.1 was tested).
-- The UI uses plain CSS with the variables in `app/globals.css` (brand `--accent` is ruby `#d61f55`, `--accent-text` `#ff5a85` for text on dark; `--up`/`--down` are green/red; chart colours `#b98a00`/`#5f8fe8` are validated data colours, keep them). Body font Figtree, headings Bricolage Grotesque. Keep it dark, dense and readable, like a trading desk, and check it at mobile width.
-- Small, focused commits. Do not rename the project without asking the owner. The name is **Lamplight** (renamed from Deskmate on 8 Oct; the repo and Vercel URL still say deskmate).
+- The UI uses plain CSS in `app/globals.css`: pitch black `#000`, text `#ededed`, greys, hairlines `#1a1a1a`/`#2b2b2b`; one accent `--accent` `#d0f25a` for key headings only; `--up`/`--down` green/red only on numbers that move. Font: SUSE Mono everywhere. **No gradients, shadows, glows, pills, coloured dots or emoji**; hover/active states are white; corners 2px. Animations with `motion` (Framer Motion). Check every page at 1440px and 390px (Playwright full-page screenshots work well).
+- Small, focused commits. Do not rename the project without asking the owner. The name is **Quil** (Deskmate → Lamplight → Quil on 8 Oct; the repo and Vercel URL still say deskmate).
 - When unsure about a product/scope decision, ask the owner rather than guessing. When unsure about an API, run it and look at the real response.

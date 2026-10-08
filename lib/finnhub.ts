@@ -59,16 +59,19 @@ export async function recommendation(ticker: string) {
   return { period: r.period, strongBuy: r.strongBuy, buy: r.buy, hold: r.hold, sell: r.sell, strongSell: r.strongSell, total };
 }
 
-const nameCache = new Map<string, { at: number; name: string | null }>();
+const infoCache = new Map<string, { at: number; info: { name: string | null; logo: string | null } }>();
 
-async function companyName(ticker: string) {
-  const hit = nameCache.get(ticker);
-  if (hit && Date.now() - hit.at < DAY) return hit.name;
-  const p = await get<{ name?: string }>(`/stock/profile2?symbol=${ticker}`).catch(() => ({}) as { name?: string });
-  const name = p.name || null;
-  nameCache.set(ticker, { at: Date.now(), name });
-  return name;
+/** Company name and logo URL from Finnhub's company profile (cached for a day). */
+export async function companyInfo(ticker: string) {
+  const hit = infoCache.get(ticker);
+  if (hit && Date.now() - hit.at < DAY) return hit.info;
+  const p = await get<{ name?: string; logo?: string }>(`/stock/profile2?symbol=${ticker}`).catch(() => ({}) as { name?: string; logo?: string });
+  const info = { name: p.name || null, logo: p.logo || null };
+  infoCache.set(ticker, { at: Date.now(), info });
+  return info;
 }
+
+const companyName = async (ticker: string) => (await companyInfo(ticker)).name;
 
 /**
  * Newest company news that actually mentions the company. Finnhub's "related" feed for big names is

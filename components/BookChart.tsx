@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type Point = { date: string; book: number; btc: number | null };
 
-const BOOK = "#b98a00";
-const BTC = "#5f8fe8";
+const BOOK = "#ffffff"; // your book: white
+const BTC = "#6e6e6e"; // BTC: grey
 const PAD = { l: 34, r: 12, t: 10, b: 22 };
 
 const fmtDate = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });

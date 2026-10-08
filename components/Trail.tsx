@@ -1,20 +1,18 @@
 "use client";
+// Every tool call the agent made: tool, data source, time, and what came back. Failed steps are marked in red text.
 import type { TrailStep } from "@/lib/types";
 
 export function Trail({ steps }: { steps: TrailStep[] }) {
   return (
-    <div className="trail">
+    <ol className="trail">
       {steps.map((s) => (
-        <div className="step" key={s.id}>
-          <span className={`dot ${s.ok ? "ok" : "bad"}`} style={{ marginTop: 5 }} />
-          <div>
-            <span className="tool">{s.tool}</span>
-            <span className="src">{s.source}</span>
-          </div>
-          <span className="ms">{s.ms ? `${(s.ms / 1000).toFixed(1)}s` : ""}</span>
-          <div className="sum">{s.summary}</div>
-        </div>
+        <li key={s.id} className={s.ok ? undefined : "failed"}>
+          <span className="trail-tool">{s.tool}</span>
+          <span className="trail-src">{s.source}{s.ok ? "" : " · failed"}</span>
+          <span className="trail-ms">{s.ms ? `${(s.ms / 1000).toFixed(1)}s` : ""}</span>
+          <span className="trail-sum">{s.summary}</span>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
