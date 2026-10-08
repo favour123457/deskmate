@@ -1,9 +1,12 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { InsightCard } from "@/components/InsightCard";
-import { PortfolioPanel } from "@/components/PortfolioPanel";
+import { BookCard, Glance, PortfolioView } from "@/components/Portfolio";
+import { NewsTicker } from "@/components/NewsTicker";
+import { Logo, BRAND } from "@/components/Logo";
+import { useResearch } from "@/lib/useResearch";
 import { Trail } from "@/components/Trail";
-import { LiveResearch } from "@/components/LiveResearch";
+import { NewsView } from "@/components/LiveResearch";
 import { ProfileForm } from "@/components/ProfileForm";
 import { DEFAULT_ANSWERS, loadAnswers, profileSummary, profileText, saveAnswers, type ProfileAnswers } from "@/lib/profile";
 import type { Holding, Insight, PortfolioMetrics, StreamEvent, TrailStep } from "@/lib/types";
@@ -21,8 +24,29 @@ type Turn = {
 type Health = {
   bitgetRest: { ok: boolean; detail: string };
   bitgetMcp: { ok: boolean; tools: string[]; error: string | null };
+  finnhub?: { configured: boolean };
   llm: { id: string; model: string }[];
 };
+
+type Tab = "desk" | "portfolio" | "news";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "desk", label: "Desk" },
+  { id: "portfolio", label: "Portfolio" },
+  { id: "news", label: "News" },
+];
+const MODEL_NAMES: Record<string, string> = { gemini: "Gemini", qwen: "Qwen", deepseek: "DeepSeek", groq: "Groq", openrouter: "OpenRouter", custom: "AI model" };
+
+/** A data source shown as its name, with the company's logo if public/logos/{id}.svg exists. No pill, no colour. */
+function SourceMark({ id, name, ok, title }: { id: string; name: string; ok: boolean | null; title?: string }) {
+  const [logo, setLogo] = useState(true);
+  return (
+    <span className="source" title={title}>
+      {logo && <img src={`/logos/${id}.svg`} alt="" width={16} height={16} onError={() => setLogo(false)} />}
+      {name}
+      {ok === false && <span className="source-down">unavailable</span>}
+    </span>
+  );
+}
 
 const DEFAULT_HOLDINGS: Holding[] = [
   { symbol: "rNVDA", usd: 400 },
@@ -67,11 +91,32 @@ export default function Desk() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<Tab>("desk");
+  const [panelOpen, setPanelOpen] = useState(true);
   const feedRef = useRef<HTMLDivElement>(null);
   const hydrated = useRef(false);
 
+  // tab follows the URL hash (#portfolio, #news) so links and the back button work
+  useEffect(() => {
+    const read = () => {
+      const h = window.location.hash.slice(1);
+      setTab(h === "portfolio" || h === "news" ? h : "desk");
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+  const go = (t: Tab) => {
+    if (t === "desk") history.pushState(null, "", window.location.pathname);
+    else window.location.hash = t;
+    setTab(t);
+    window.scrollTo(0, 0);
+  };
+  const setPanel = (open: boolean) => { setPanelOpen(open); save("dm.panel", open); };
+
   // restore saved book
   useEffect(() => {
+    setPanelOpen(load("dm.panel", window.innerWidth > 900));
     setHoldings(load("dm.holdings", DEFAULT_HOLDINGS));
     setAnswers(loadAnswers() ?? DEFAULT_ANSWERS);
     hydrated.current = true;
@@ -155,98 +200,110 @@ export default function Desk() {
     }
   };
 
-  const llmOk = !!health?.llm.length;
   const stockSymbols = metrics ? metrics.positions.filter((p) => p.bucket !== "Crypto" && p.bucket !== "Other").map((p) => p.display) : [];
+  const research = useResearch(stockSymbols);
+  const bookProps = { holdings, setHoldings, metrics, errors, loading: loadingBook, onRefresh: () => refresh(holdings) };
+  const llm = health?.llm[0];
 
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand">
-          <div className="logo">D</div>
-          <div style={{ minWidth: 0 }}>
-            <h1>Deskmate</h1>
-            <p>AI research desk for tokenized US stocks and crypto. You make the call.</p>
-          </div>
-        </div>
-        <div className="status">
-          <button className="pill pill-btn" onClick={() => setEditing(answers)} title={profile}>
-            Profile: {profileSummary(answers)}
+        <a href="/desk" className="topbar-brand" aria-label={`${BRAND} home`} onClick={(e) => { e.preventDefault(); go("desk"); }}>
+          <Logo size={28} />
+        </a>
+        <nav className="tabs" aria-label="Sections">
+          {TABS.map((t) => (
+            <a key={t.id} href={`#${t.id}`} className="tab" aria-current={tab === t.id ? "page" : undefined} onClick={(e) => { e.preventDefault(); go(t.id); }}>
+              {t.label}
+            </a>
+          ))}
+        </nav>
+        <div className="topbar-right">
+          {clock && <span className="clock"><span className={`dot ${clock.includes("open —") ? "ok" : "wait"}`} />{clock.replace(" — ", ", ")}</span>}
+          <span className="sources" aria-label="Data sources">
+            <SourceMark id="bitget" name="Bitget" ok={health ? health.bitgetRest.ok && health.bitgetMcp.ok : null} title={health ? `Market data ${health.bitgetRest.ok ? "live" : "down"}; MCP ${health.bitgetMcp.ok ? "connected" : "unavailable"}` : undefined} />
+            {health?.finnhub?.configured && <SourceMark id="finnhub" name="Finnhub" ok title="News, ratings and earnings" />}
+            <SourceMark id={llm?.id ?? "llm"} name={llm ? MODEL_NAMES[llm.id] ?? llm.id : "No AI model"} ok={health ? !!llm : null} title={health?.llm.map((l) => l.model).join(", ")} />
+          </span>
+          <button className="profile-btn" onClick={() => setEditing(answers)} title={profile}>
+            <span className="profile-label">Profile</span> <span className="faint">{profileSummary(answers)}</span>
           </button>
-          {clock && <span className="pill"><span className={`dot ${clock.includes("open —") ? "ok" : "wait"}`} />{clock}</span>}
-          <span className="pill" title={health?.bitgetRest.detail}><span className={`dot ${health ? (health.bitgetRest.ok ? "ok" : "bad") : ""}`} />Bitget data</span>
-          <span className="pill" title={health?.bitgetMcp.error || `${health?.bitgetMcp.tools.length ?? 0} tools`}><span className={`dot ${health ? (health.bitgetMcp.ok ? "ok" : "bad") : ""}`} />Bitget MCP</span>
-          <span className="pill" title={health?.llm.map((l) => `${l.id}:${l.model}`).join(", ")}><span className={`dot ${health ? (llmOk ? "ok" : "bad") : ""}`} />{llmOk ? health!.llm[0].id : "No LLM key"}</span>
         </div>
       </header>
 
-      <main className="main">
-        <PortfolioPanel
-          holdings={holdings}
-          setHoldings={setHoldings}
-          metrics={metrics}
-          errors={errors}
-          loading={loadingBook}
-          onRefresh={() => refresh(holdings)}
-        />
+      {tab === "desk" && (
+        <main className={`main${panelOpen ? "" : " panel-closed"}`}>
+          {panelOpen && (
+            <aside className="side" aria-label="Your book">
+              <BookCard {...bookProps} compact />
+              <Glance metrics={metrics} onOpen={() => go("portfolio")} />
+              <button className="link-btn hide-panel" onClick={() => setPanel(false)}>Hide this panel</button>
+            </aside>
+          )}
 
-        <section className="chat">
-          <div className="feed" ref={feedRef}>
-            <div className="feed-inner">
-              {turns.length === 0 ? (
-                <div className="empty">
-                  <h2>Ask before you trade.</h2>
-                  <p>Deskmate checks live Bitget prices, fundamentals and news, then shows exactly how a trade changes the risk in your book — including the hours when the US market is shut and only rTokens are trading.</p>
-                  <div className="chips">
-                    {SUGGESTIONS.map((s) => (
-                      <button key={s} className="chip" onClick={() => ask(s)}>{s}</button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                turns.map((t, i) => (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div className="q">{t.question}</div>
-                    {t.insight ? (
-                      <InsightCard insight={t.insight} steps={t.steps} provider={t.provider} degraded={t.degraded} />
-                    ) : t.error ? (
-                      <div className="card err">Something went wrong: {t.error}</div>
-                    ) : (
-                      <div className="working">
-                        <div className="status-line"><span className="spinner" />{t.status}</div>
-                        <Trail steps={t.steps} />
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
+          <section className="chat">
+            <div className="chat-top">
+              {!panelOpen && <button className="show-panel" onClick={() => setPanel(true)}>Show your book</button>}
+              <NewsTicker research={research} onOpenAll={() => go("news")} />
             </div>
-          </div>
+            <div className="feed" ref={feedRef}>
+              <div className="feed-inner">
+                {turns.length === 0 ? (
+                  <div className="empty">
+                    <h2>Ask before you trade.</h2>
+                    <p>{BRAND} checks live Bitget prices, analyst targets and news, then shows exactly how a trade changes the risk in your book, including the hours when the US market is shut and only rTokens are trading.</p>
+                    <div className="chips">
+                      {SUGGESTIONS.map((s) => (
+                        <button key={s} className="chip" onClick={() => ask(s)}>{s}</button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  turns.map((t, i) => (
+                    <div key={i} className="turn">
+                      <div className="q">{t.question}</div>
+                      {t.insight ? (
+                        <InsightCard insight={t.insight} steps={t.steps} provider={t.provider} degraded={t.degraded} />
+                      ) : t.error ? (
+                        <div className="card err">Something went wrong: {t.error}</div>
+                      ) : (
+                        <div className="working">
+                          <div className="status-line"><span className="spinner" />{t.status}</div>
+                          <Trail steps={t.steps} />
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
 
-          <div className="composer">
-            <div className="composer-inner">
-              <textarea
-                value={draft}
-                rows={1}
-                placeholder="Ask about a trade, e.g. “Should I trim rTSLA before Monday?”"
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    ask(draft);
-                  }
-                }}
-              />
-              <button className="btn primary" onClick={() => ask(draft)} disabled={busy || !draft.trim()}>
-                {busy ? "…" : "Ask"}
-              </button>
+            <div className="composer">
+              <div className="composer-inner">
+                <textarea
+                  value={draft}
+                  rows={1}
+                  placeholder="Ask about a trade, e.g. “Should I trim rTSLA before Monday?”"
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      ask(draft);
+                    }
+                  }}
+                />
+                <button className="btn primary" onClick={() => ask(draft)} disabled={busy || !draft.trim()}>
+                  {busy ? "…" : "Ask"}
+                </button>
+              </div>
+              <p className="disclaimer">Research tool, not financial advice. {BRAND} never places orders.</p>
             </div>
-            <p className="disclaimer">Research tool, not financial advice. Deskmate never places orders.</p>
-          </div>
-        </section>
-        <aside className="news-col" aria-label="Live news and ratings">
-          <LiveResearch symbols={stockSymbols} />
-        </aside>
-      </main>
+          </section>
+        </main>
+      )}
+
+      {tab === "portfolio" && <main className="page"><PortfolioView {...bookProps} /></main>}
+      {tab === "news" && <main className="page"><NewsView research={research} /></main>}
 
       {editing && (
         <div className="sheet-backdrop" onClick={() => setEditing(null)}>

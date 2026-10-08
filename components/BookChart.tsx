@@ -6,13 +6,13 @@ type Point = { date: string; book: number; btc: number | null };
 
 const BOOK = "#b98a00";
 const BTC = "#5f8fe8";
-const H = 168;
 const PAD = { l: 34, r: 12, t: 10, b: 22 };
 
 const fmtDate = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const chg = (v: number) => `${v >= 100 ? "+" : ""}${(v - 100).toFixed(1)}%`;
 
-export function BookChart({ data }: { data: Point[] }) {
+export function BookChart({ data, height = 168 }: { data: Point[]; height?: number }) {
+  const H = height;
   const wrap = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(320);
   const [hover, setHover] = useState<number | null>(null);
@@ -40,7 +40,7 @@ export function BookChart({ data }: { data: Point[] }) {
     const path = (key: "book" | "btc") =>
       data.map((d, i) => (d[key] == null ? "" : `${i ? "L" : "M"}${x(i).toFixed(1)},${y(d[key] as number).toFixed(1)}`)).join("");
     return { x, y, ticks, bookPath: path("book"), btcPath: hasBtc ? path("btc") : "" };
-  }, [data, w, hasBtc]);
+  }, [data, w, hasBtc, H]);
 
   if (data.length < 5) return <p className="muted small">Not enough price history for a chart yet.</p>;
 

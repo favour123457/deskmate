@@ -6,7 +6,7 @@
 //
 // Needs: npm install (playwright, ffmpeg-static, msedge-tts are devDependencies) and a browser:
 // it uses your installed Google Chrome if present, otherwise run `npx playwright install chromium` once.
-// Output: demo/deskmate-demo.mp4
+// Output: demo/lamplight-demo.mp4
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -26,7 +26,7 @@ const QUESTION = "Should I add $200 of rNVDA before the weekend?";
 // ---------- the script: narration + what happens on screen ----------
 const SCENES = [
   {
-    text: "Wall Street closes at nine p.m. in Lagos. But Bitget's tokenized US stocks keep trading, all night and all weekend. Deskmate is an AI research desk for people who hold those stocks and crypto from the other side of the world.",
+    text: "Wall Street closes at nine p.m. in Lagos. But Bitget's tokenized US stocks keep trading, all night and all weekend. Lamplight is an AI research desk for people who hold those stocks and crypto from the other side of the world.",
     act: async (p) => {
       await p.goto(BASE + "/?intro=1", { waitUntil: "networkidle" }).catch(() => {});
       await p.waitForSelector(".ob-copy", { timeout: 20000 }).catch(() => {});
@@ -48,25 +48,36 @@ const SCENES = [
     },
   },
   {
-    text: "The desk loads your holdings with live Bitget prices, and shows how much of your money sits in each one.",
-    act: async (p) => { await click(p, "text=Open my desk"); await p.waitForSelector(".weights", { timeout: 30000 }).catch(() => {}); await pause(800); await hover(p, ".weights li:first-child"); },
-  },
-  {
-    text: "This chart compares your book over the last few months with simply holding Bitcoin.",
-    act: async (p) => { await scrollTo(p, ".side", ".bchart"); await pause(900); await sweepChart(p); },
-  },
-  {
-    text: "Every risk number is explained in plain words: how concentrated you are, how closely you move with Bitcoin, what a bad day could cost, and your worst weekend while the US market was shut.",
-    act: async (p) => { await scrollTo(p, ".side", ".risks"); await pause(1200); await hover(p, ".risk:nth-child(3)"); await pause(1800); await scrollTo(p, ".side", ".risk:nth-child(6)"); await hover(p, ".risk:nth-child(6)"); },
-  },
-  {
-    text: "On the right, live analyst ratings, price targets, earnings dates and headlines for every stock you hold.",
-    act: async (p) => { await hover(p, ".news-col .brief"); await pause(1500); await scrollTo(p, ".news-col", ".news-col .brief:last-child"); },
-  },
-  {
-    text: "Now, ask a question in plain English. The agent pulls Bitget market data, analyst targets and the earnings calendar, and simulates the trade on your whole portfolio. You can watch every step.",
+    text: "The desk loads your holdings with live Bitget prices, and the three risk numbers that matter most: your biggest holding, how closely you move with Bitcoin, and what a bad day could cost.",
     act: async (p) => {
-      await scrollTo(p, ".side", ".hero");
+      await click(p, "text=Open my desk");
+      await p.waitForSelector(".weights", { timeout: 30000 }).catch(() => {});
+      await pause(800); await hover(p, ".weights li:first-child");
+      await pause(1500); await hover(p, ".side .risks");
+    },
+  },
+  {
+    text: "Across the top, the latest headlines for the stocks you hold, one at a time.",
+    act: async (p) => { await hover(p, ".strip-body"); await pause(2500); await click(p, ".strip-nav button[aria-label='Next headline']"); },
+  },
+  {
+    text: "The Portfolio page has the full picture. This chart compares your book over the last few months with simply holding Bitcoin, and every risk number is explained in plain words.",
+    act: async (p) => {
+      await click(p, "nav >> text=Portfolio");
+      await p.waitForSelector(".bchart svg", { timeout: 20000 }).catch(() => {});
+      await pause(600); await sweepChart(p);
+      await scrollTo(p, ".page", ".risks"); await hover(p, ".risk:nth-child(3)");
+    },
+  },
+  {
+    text: "The News page shows analyst ratings, price targets, earnings dates and headlines for every stock you hold.",
+    act: async (p) => { await click(p, "nav >> text=News"); await p.waitForSelector(".news-grid .brief", { timeout: 20000 }).catch(() => {}); await pause(600); await hover(p, ".news-grid .brief"); },
+  },
+  {
+    text: "Now, back on the desk, ask a question in plain English. The agent pulls Bitget market data, analyst targets and the earnings calendar, and simulates the trade on your whole portfolio. You can watch every step.",
+    act: async (p) => {
+      await click(p, "nav >> text=Desk");
+      await p.waitForSelector(".chip", { timeout: 20000 }).catch(() => {});
       const chip = p.locator(".chip", { hasText: QUESTION });
       if (await chip.count()) await click(p, chip.first());
       else { await click(p, ".composer textarea"); await p.keyboard.type(QUESTION, { delay: 25 }); await p.keyboard.press("Enter"); }
@@ -78,7 +89,7 @@ const SCENES = [
     act: async (p) => { await hover(p, ".insight-head"); await pause(1500); await scrollTo(p, ".feed", ".impact"); await hover(p, ".impact"); await pause(1500); await scrollTo(p, ".feed", ".hedge"); },
   },
   {
-    text: "Every source is listed in the research trail, so you can check the work. And the final decision is always yours. Deskmate never places orders. Deskmate. Ask before you trade.",
+    text: "Every source is listed in the research trail, so you can check the work. And the final decision is always yours. Lamplight never places orders. Lamplight. Research your trades while New York sleeps.",
     act: async (p) => { await scrollTo(p, ".feed", ".trail-box"); await click(p, "details.trail-box summary"); await pause(1800); await scrollTo(p, ".feed", ".decision"); await hover(p, ".decision"); },
   },
 ];
@@ -262,7 +273,7 @@ async function main() {
   const delays = lines.map((l, i) => `[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${starts[i] + 300}|${starts[i] + 300}[a${i}]`);
   const mix = `${delays.join(";")};${lines.map((_, i) => `[a${i}]`).join("")}amix=inputs=${lines.length}:normalize=0,apad[aout]`;
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const out = path.join(OUT_DIR, "deskmate-demo.mp4");
+  const out = path.join(OUT_DIR, "lamplight-demo.mp4");
   args.push("-filter_complex", mix, "-map", "0:v", "-map", "[aout]", "-t", String(total / 1000),
     "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "30",
     "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out);

@@ -240,7 +240,7 @@ export function Globe({ tickers, nyLabel, homeLabel, className }: Props) {
       for (let k = 1; k < pts.length; k++) {
         const a = pts[k - 1].p, b = pts[k].p;
         if (hidden(a) || hidden(b)) continue;
-        ctx.strokeStyle = `rgba(${Math.round(122 + (240 - 122) * pts[k].t)},${Math.round(167 + (185 - 167) * pts[k].t)},${Math.round(255 + (11 - 255) * pts[k].t)},0.85)`;
+        ctx.strokeStyle = `rgba(${Math.round(122 + (255 - 122) * pts[k].t)},${Math.round(167 + (90 - 167) * pts[k].t)},${Math.round(255 + (133 - 255) * pts[k].t)},0.85)`;
         ctx.beginPath();
         ctx.moveTo(cx + R * a[0], cy - R * a[1]);
         ctx.lineTo(cx + R * b[0], cy - R * b[1]);
@@ -250,8 +250,8 @@ export function Globe({ tickers, nyLabel, homeLabel, className }: Props) {
         const pt = reduce ? 0.62 : (el / 2600) % 1;
         const p = view(slerp(nyV, homeV, pt), 1 + 0.22 * Math.sin(Math.PI * pt));
         if (!hidden(p)) {
-          ctx.fillStyle = "#fff4cf";
-          ctx.shadowColor = "#f0b90b";
+          ctx.fillStyle = "#ffe3ea";
+          ctx.shadowColor = "#ff5a85";
           ctx.shadowBlur = 12;
           ctx.beginPath();
           ctx.arc(cx + R * p[0], cy - R * p[1], 2.6, 0, Math.PI * 2);
@@ -293,7 +293,7 @@ export function Globe({ tickers, nyLabel, homeLabel, className }: Props) {
         ctx.textAlign = "left";
       };
       marker(nyV, "#7aa7ff", nyL, -1, false);
-      marker(homeV, "#f0b90b", homeL, 1, true);
+      marker(homeV, "#ff5a85", homeL, 1, true);
 
       drawOrbitLine(true);
       chips.filter((c) => c.p[2] >= 0).forEach(drawChip);

@@ -31,16 +31,20 @@ The project description in the form weighs parts 1 to 3 most: **thesis**, **spec
 
 ---
 
-## 2. The product: Deskmate
+## 2. The product: Lamplight
 
-**Thesis:** rTokens trade 7×24 but the US cash market doesn't. From Lagos, the US session closes at 21:00 and doesn't reopen until Monday afternoon. Small traders hold rTokens + crypto through those gaps with no desk, no risk system, and no analyst, and they often concentrate into one tech name that moves together with BTC without realizing it. Generic chatbots answer "should I buy NVDA?" in general terms; Deskmate answers **"what does buying $200 of rNVDA do to *my* book, right now, before a weekend with no US reference price?"**
+**Thesis:** rTokens trade 7×24 but the US cash market doesn't. From Lagos, the US session closes at 21:00 and doesn't reopen until Monday afternoon. Small traders hold rTokens + crypto through those gaps with no desk, no risk system, and no analyst, and they often concentrate into one tech name that moves together with BTC without realizing it. Generic chatbots answer "should I buy NVDA?" in general terms; Lamplight answers **"what does buying $200 of rNVDA do to *my* book, right now, before a weekend with no US reference price?"**
 
 **Target user:** crypto-native students / small retail traders with ≈$100 to $5,000, holding 2 to 8 rTokens + some crypto, located outside US hours (West Africa, Asia), who trade a few times a week.
 
 **User flow (two routes):**
 1. **Onboarding at `/`** (`app/page.tsx`): an intro with a live canvas globe (`components/Globe.tsx`) showing the real day/night line, New York and Lagos, an arc between them, and orbiting chips with live Bitget prices. The headline follows the real US market clock (open / closed / weekend). It auto-advances after 12 s (pauses on hover/focus), then a quick-pick profile setup (`components/ProfileForm.tsx`: book size, risk appetite, weekend habit, place, notes). `lib/profile.ts` turns the answers into one sentence for the analyst and stores them in localStorage (`dm.profileAnswers`, `dm.profile`, `dm.onboarded`). Returning visitors are redirected to `/desk`; `/?intro=1` replays the intro.
-2. **The desk at `/desk`** (`app/desk/page.tsx`): the user enters holdings in the left panel (`rNVDA $400`, `BTC $250`…), saved in localStorage. The profile is edited from the **Profile** pill in the top bar (a sheet), not the sidebar.
-3. The left panel shows **risk tiles computed in code** from live Bitget data: book value, largest holding, effective # of positions (1/HHI), BTC correlation + beta, 30-day annualized volatility, 1-day 95% historical VaR, worst Friday→Monday move, max drawdown, sector/bucket exposure bar, and a per-position 24h change. Below them, **Live news & ratings** (`components/LiveResearch.tsx`): per held stock, an analyst rating bar, price-target range, next earnings date and 3 headlines, auto-refreshing every 5 min.
+2. **The app at `/desk`** (`app/desk/page.tsx`) has three tabs in the top bar (URL hash `#portfolio`, `#news`):
+   - **Desk:** a collapsible side panel (your book with weight bars + "Risk at a glance": biggest holding, link to BTC, bad-day loss; starts hidden on phones), the chat, and a one-line **news strip** above the chat.
+   - **Portfolio:** holdings editor, 90-day chart (book vs BTC, indexed to 100), every risk number in plain words, what moves together.
+   - **News:** a card per held stock (analyst ratings, price targets, earnings date, headlines).
+   The top bar shows data sources as plain names (`SourceMark`); if `public/logos/{bitget,finnhub,gemini}.svg` exist, the official logos appear next to the names. The profile is edited from **Profile** in the top bar (a sheet).
+3. All numbers are **computed in code** from live Bitget data: book value, largest holding, effective # of positions (1/HHI), BTC correlation + beta, 30-day volatility, 1-day 95% historical VaR, worst Friday→Monday move, max drawdown, pairwise correlation.
 4. The user asks a question in the chat. The LLM runs a tool-calling loop, the **research trail streams live** into the UI, and the final **insight card** shows: verdict, risk, confidence, headline, summary, a "what changes in your book" before→after table, evidence bullets, a sizing/hedge idea, things to watch, and **"Your call"** (the human decides).
 
 ---
@@ -72,8 +76,10 @@ app/
 components/
   Globe.tsx                Canvas globe (no map lib; land = precomputed dots in lib/geo/land-dots.json), respects reduced motion
   ProfileForm.tsx          Quick-pick profile questions (onboarding + desk sheet)
-  PortfolioPanel.tsx       Holdings editor, risk tiles, exposure bar, positions, LiveResearch
-  LiveResearch.tsx         Live news & ratings cards, 5-min auto refresh, each part names its source
+  Logo.tsx                 Lamplight mark (lamp flame with a rising line) + wordmark; BRAND constant. Favicon: app/icon.svg
+  Portfolio.tsx            BookCard (holdings + editor), Glance (3 key numbers), ChartCard, RiskCard, PairsCard, PortfolioView
+  NewsTicker.tsx           One-headline-at-a-time strip across the top of the chat (pauses on hover)
+  LiveResearch.tsx         NewsView (the News page) + Brief card; data from lib/useResearch.ts (one shared 5-min fetch)
   InsightCard.tsx          Final answer card (verdict/risk badges, impact table, evidence, hedge, watch, Your call, trail)
   Trail.tsx                List of tool steps (dot, tool name, source, ms, summary)
 lib/
@@ -89,6 +95,7 @@ lib/
   llm.ts                   OpenAI-compatible client, provider presets, comma-list model fallback, 503/429 retry, daily-quota cooldown
   agent.ts                 System prompt, tool registry, tool-calling loop, provider fallback, hedge guard, JSON extraction, normalize()
   market-clock.ts          US market open/closed status in ET (ignores holidays)
+scripts/demo-video.mjs     `npm run demo-video`: narrated walkthrough of the live site -> demo/lamplight-demo.mp4
 scripts/check.mjs          `npm run check`: Bitget REST + rToken count, MCP tools (writes mcp-tools.json), Finnhub, each LLM key incl. tool-calling
 vercel.json                Fluid compute on, region iad1 (US). Live: https://deskmate-two.vercel.app (auto-deploys from main)
 .env.example               All env vars, documented
@@ -174,6 +181,6 @@ npm run build                # must pass before any commit
 
 - Keep `lib/stats.ts` pure (no network), so it stays easy to unit-test. If you add tests, test against known numbers there.
 - To test offline, set `BITGET_API_BASE`, `BITGET_MCP_URL` and `LLM_BASE_URL` to local mock servers (this is how v0.1 was tested).
-- The UI uses plain CSS with the variables in `app/globals.css` (`--accent` is Bitget-style yellow `#f0b90b`, `--up`/`--down` are green/red). Keep it dark, dense and readable, like a trading desk, and check it at mobile width.
-- Small, focused commits. Do not rename the project without asking the owner. "Deskmate" is a working name.
+- The UI uses plain CSS with the variables in `app/globals.css` (brand `--accent` is ruby `#d61f55`, `--accent-text` `#ff5a85` for text on dark; `--up`/`--down` are green/red; chart colours `#b98a00`/`#5f8fe8` are validated data colours, keep them). Body font Figtree, headings Bricolage Grotesque. Keep it dark, dense and readable, like a trading desk, and check it at mobile width.
+- Small, focused commits. Do not rename the project without asking the owner. The name is **Lamplight** (renamed from Deskmate on 8 Oct; the repo and Vercel URL still say deskmate).
 - When unsure about a product/scope decision, ask the owner rather than guessing. When unsure about an API, run it and look at the real response.

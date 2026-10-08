@@ -3,7 +3,7 @@
 // (Price targets / upgrades are paid on Finnhub; those come from the Bitget MCP instead.)
 import { bucketFor, underlying } from "./bitget";
 
-const BASE = "https://finnhub.io/api/v1";
+const BASE = process.env.FINNHUB_API_BASE || "https://finnhub.io/api/v1";
 const DAY = 86_400_000;
 
 export const finnhubEnabled = () => Boolean(process.env.FINNHUB_API_KEY);

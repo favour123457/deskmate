@@ -1,14 +1,14 @@
-# Deskmate: an AI research desk for tokenized US stocks
+# Lamplight: an AI research desk for tokenized US stocks
 
 **Bitget AI Base Camp Hackathon S2 · 🟧 AI Trading Desk · Open Theme (portfolio-aware copilot)**
 
-> Ask before you trade. Deskmate researches your question with live Bitget data and shows you exactly how the trade changes the risk in *your* book. You make the call.
+> Ask before you trade. Lamplight researches your question with live Bitget data and shows you exactly how the trade changes the risk in *your* book. You make the call.
 
 ## The problem (thesis)
 
 Bitget rTokens (rNVDA, rTSLA, rSPY…) trade 7×24, but the US cash market doesn't. From Lagos, the US session closes at 21:00 local time and doesn't reopen until Monday afternoon. Small traders hold rTokens and crypto through those hours without a desk, a risk system or an analyst. They pile into one tech name without noticing that their "diversified" book is one big bet on the same thing as BTC.
 
-Chatbots answer "should I buy NVDA?" in general terms. Deskmate answers **"what does buying $200 of rNVDA do to *my* portfolio, right now, before a weekend with no US reference price?"**
+Chatbots answer "should I buy NVDA?" in general terms. Lamplight answers **"what does buying $200 of rNVDA do to *my* portfolio, right now, before a weekend with no US reference price?"**
 
 ## Target user
 
@@ -22,7 +22,7 @@ Crypto-native students and small retail traders (≈ $100 to $5,000) holding 2 t
    - `simulate_trade`: exact before/after risk for a proposed trade (the portfolio engine does the math, not the LLM)
    - `get_price_history`: live Bitget price, returns and volatility for any rToken, perp or crypto
    - **Bitget MCP data server** tools: fundamentals, earnings calendar, analyst targets, 13F, insider trades, news, sentiment
-4. **Insight card:** verdict, risk level, a "what changes in your book" table, evidence, a sizing or hedge idea, and what to watch. It closes with **"Your call"**; Deskmate never places orders.
+4. **Insight card:** verdict, risk level, a "what changes in your book" table, evidence, a sizing or hedge idea, and what to watch. It closes with **"Your call"**; Lamplight never places orders.
 5. **Research trail:** every tool call, its data source and its timing are shown, so the analysis can be checked.
 
 ## Design principles

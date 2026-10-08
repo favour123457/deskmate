@@ -264,7 +264,7 @@ function summarize(result: unknown): string {
 function systemPrompt(snap: Snapshot, profile: string | undefined, mcpCatalog: string | null, mcpNote: string, priceStats: unknown[], entries: { text: string; ids: Set<string> } | null) {
   const has = (id: string) => entries?.ids.has(id);
   const clock = usMarketStatus();
-  return `You are Deskmate, an AI research analyst on a trading desk for small retail traders who hold Bitget tokenized US stocks (rTokens such as rNVDA, which trade 7x24) alongside crypto.
+  return `You are Lamplight, an AI research analyst on a trading desk for small retail traders who hold Bitget tokenized US stocks (rTokens such as rNVDA, which trade 7x24) alongside crypto.
 You RESEARCH and EXPLAIN. The human trader makes the final decision. You never place orders.
 
 CONTEXT

@@ -1,4 +1,4 @@
-# Deskmate: progress, challenges and handoff
+# Lamplight (formerly Deskmate): progress, challenges and handoff
 
 Last updated: **2 Oct 2026 (Lagos, UTC+1)**. Session 2 is at the top; session 1 follows. Read `AGENTS.md` first for the project brief, rules and roadmap. This file records what has been done since then and what to do next.
 

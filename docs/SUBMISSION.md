@@ -1,4 +1,4 @@
-# Deskmate: Bitget AI Hackathon S2 submission
+# Lamplight: Bitget AI Hackathon S2 submission
 
 - **Track:** AI Trading Desk → **Open Theme** (portfolio-aware AI copilot)
 - **Live demo:** https://deskmate-two.vercel.app
@@ -16,7 +16,7 @@ Everything below is written to be pasted into the Google Form. Fill in the brack
 
 Bitget rTokens (rNVDA, rTSLA, rSPY…) trade 7×24, but the US cash market doesn't. From Lagos, the US session closes at 21:00 local time and the weekend gap lasts about 65 hours. During those hours a retail trader holding rTokens has no reference price, no desk, no risk system and no analyst. Our core hypothesis: the main risk for these traders is not picking the wrong stock but not seeing what a trade does to the whole book. They concentrate into one tech name, don't notice that their "diversified" mix moves with BTC, and carry that exposure through weekends when only thin rToken order books are pricing it.
 
-Existing tools fall short. A generic chatbot answers "should I buy NVDA?" in general terms and does its own (often wrong) arithmetic. Exchange screens show prices, not portfolio effects. Deskmate answers a different question: **"what does buying $200 of rNVDA do to my book, right now, before a weekend with no US reference price?"** The AI researches and explains, code computes every number, and the trader makes the decision. Deskmate never places orders.
+Existing tools fall short. A generic chatbot answers "should I buy NVDA?" in general terms and does its own (often wrong) arithmetic. Exchange screens show prices, not portfolio effects. Lamplight answers a different question: **"what does buying $200 of rNVDA do to my book, right now, before a weekend with no US reference price?"** The AI researches and explains, code computes every number, and the trader makes the decision. Lamplight never places orders.
 
 ### 2. Target user and product value
 
@@ -89,7 +89,7 @@ Quote this post: https://x.com/Bitget_AI/status/2100519318824055159
 
 > Wall Street closes at 21:00 in Lagos. My rTokens don't.
 >
-> So I built Deskmate for #BitgetHackathon: an AI research desk for tokenized US stocks + crypto. Ask "should I add $200 of rNVDA before the weekend?" and it pulls live Bitget data, simulates the trade on your whole book, and shows the risk. You make the call.
+> So I built Lamplight for #BitgetHackathon: an AI research desk for tokenized US stocks + crypto. Ask "should I add $200 of rNVDA before the weekend?" and it pulls live Bitget data, simulates the trade on your whole book, and shows the risk. You make the call.
 >
 > @Bitget_AI
 > https://deskmate-two.vercel.app

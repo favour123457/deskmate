@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Globe, type OrbitTicker } from "@/components/Globe";
 import { ProfileForm } from "@/components/ProfileForm";
+import { Logo } from "@/components/Logo";
 import { usMarketStatus } from "@/lib/market-clock";
 import { DEFAULT_ANSWERS, detectPlace, loadAnswers, saveAnswers, type ProfileAnswers } from "@/lib/profile";
 
@@ -114,10 +115,7 @@ export default function Onboarding() {
   return (
     <div className="ob">
       <header className="ob-top">
-        <div className="ob-brand">
-          <span className="logo">D</span>
-          <span>Deskmate</span>
-        </div>
+        <Logo size={30} />
         <button className="ob-skip" onClick={() => openDesk(answers)}>Skip to the desk</button>
       </header>
 
@@ -134,14 +132,14 @@ export default function Onboarding() {
               <p className="ob-context"><span className={`ob-live${clock?.open ? " open" : ""}`} aria-hidden />{context}</p>
               <h1 className="ob-h1">{headline}</h1>
               <p className="ob-lede">
-                Deskmate is an AI research desk for people who hold tokenized US stocks and crypto on Bitget from
+                Lamplight is an AI research desk for people who hold tokenized US stocks and crypto on Bitget from
                 the other side of the world. Ask about a trade before you make it.
               </p>
               <ol className="ob-steps">
                 <li><b>Ask in plain English.</b> “Should I add $200 of rNVDA before the weekend?”</li>
                 <li><b>The agent researches.</b> Live Bitget prices, analyst targets, earnings dates and news.</li>
                 <li><b>It checks the maths in code.</b> What the trade does to your concentration, volatility and weekend risk.</li>
-                <li><b>You decide.</b> You get the evidence and a sizing idea. Deskmate never places orders.</li>
+                <li><b>You decide.</b> You get the evidence and a sizing idea. Lamplight never places orders.</li>
               </ol>
               <div className="ob-cta">
                 <button className="ob-btn" onClick={goSetup}>Set up my desk</button>
