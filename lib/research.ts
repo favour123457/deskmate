@@ -48,7 +48,7 @@ export async function stockBrief(raw: string): Promise<StockBrief> {
   if (hit && Date.now() - hit.at < TTL) return hit.value;
 
   const ticker = stockTicker(key);
-  const display = await resolveSymbol(key).then((r) => r.display).catch(() => key);
+  const display = await resolveSymbol(key).then((r) => r.display).catch(() => key); // falls back to what the user typed
   const errors: string[] = [];
   const fh = finnhubEnabled();
   if (!fh) errors.push("Finnhub key not configured: no rating, earnings or news");
@@ -72,6 +72,7 @@ export async function stockBrief(raw: string): Promise<StockBrief> {
     newsSource: fh ? "Finnhub" : null,
     errors,
   };
-  cache.set(key, { at: Date.now(), value });
+  // A brief with failures is only kept for 30 s, so a network blip doesn't stick for the full 5 minutes.
+  cache.set(key, { at: errors.length ? Date.now() - TTL + 30_000 : Date.now(), value });
   return value;
 }

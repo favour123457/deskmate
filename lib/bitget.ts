@@ -71,8 +71,11 @@ async function ticker(market: Market, symbol: string): Promise<TickerRow | null>
     const data = await get<TickerRow[]>(path);
     const row = Array.isArray(data) ? data[0] : null;
     return row && Number(row.lastPr) > 0 ? row : null;
-  } catch {
-    return null;
+  } catch (e) {
+    // Bitget answered "no such symbol": try the next candidate. A network failure must NOT fall through,
+    // or a blip on RNVDAUSDT would silently resolve rNVDA to the NVDA perp.
+    if (e instanceof Error && e.message.startsWith("Bitget ")) return null;
+    throw e;
   }
 }
 
