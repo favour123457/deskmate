@@ -144,9 +144,9 @@ const OVERLAY = () => {
     const st = document.createElement("style");
     st.textContent = `#__demo_cursor{position:fixed;z-index:99999;width:22px;height:22px;margin:-4px 0 0 -4px;pointer-events:none;transition:left .35s ease,top .35s ease}
 #__demo_cursor svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
-#__demo_ring{position:fixed;z-index:99998;width:36px;height:36px;margin:-18px 0 0 -18px;border:2px solid #f0b90b;border-radius:50%;pointer-events:none;opacity:0}
-#__demo_cap{position:fixed;z-index:99997;left:50%;bottom:28px;transform:translateX(-50%);max-width:min(980px,86vw);padding:10px 18px;border-radius:10px;
-background:rgba(7,13,26,.88);color:#f3f5fa;font:500 19px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}`;
+#__demo_ring{position:fixed;z-index:99998;width:36px;height:36px;margin:-18px 0 0 -18px;border:1px solid #fff;border-radius:50%;pointer-events:none;opacity:0}
+#__demo_cap{position:fixed;z-index:99997;left:50%;bottom:28px;transform:translateX(-50%);max-width:min(980px,86vw);padding:12px 20px;border-radius:2px;border:1px solid #2b2b2b;
+background:rgba(0,0,0,.92);color:#ededed;font:400 17px/1.5 "SUSE Mono Variable",ui-monospace,Menlo,monospace;letter-spacing:-.01em;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}`;
     document.head.appendChild(st);
     const c = document.createElement("div");
     c.id = "__demo_cursor";
@@ -166,22 +166,26 @@ background:rgba(7,13,26,.88);color:#f3f5fa;font:500 19px/1.4 system-ui,-apple-sy
 // ---------- 1. voice ----------
 async function synth(text, i) {
   const base = path.join(WORK, `line${String(i).padStart(2, "0")}`);
-  // a) Microsoft Edge neural voice (free, needs internet)
-  try {
-    const { MsEdgeTTS, OUTPUT_FORMAT } = await import("msedge-tts");
-    const tts = new MsEdgeTTS();
-    await tts.setMetadata(VOICE, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
-    const dir = base + "_edge";
-    fs.mkdirSync(dir, { recursive: true });
-    const { audioFilePath } = await Promise.race([
-      tts.toFile(dir, text, { rate: "-4%" }),
-      pause(30000).then(() => { throw new Error("timeout"); }),
-    ]);
-    tts.close?.();
-    if (fs.statSync(audioFilePath).size > 2000) return { file: audioFilePath, engine: `Edge ${VOICE}` };
-  } catch (e) {
-    console.warn(`  Edge voice failed (${String(e.message || e).slice(0, 80)}), trying your computer's built-in voice`);
+  // a) Microsoft Edge neural voice (free, needs internet). Retried, because the service times out now and then.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const { MsEdgeTTS, OUTPUT_FORMAT } = await import("msedge-tts");
+      const tts = new MsEdgeTTS();
+      await tts.setMetadata(VOICE, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+      const dir = `${base}_edge${attempt}`;
+      fs.mkdirSync(dir, { recursive: true });
+      const { audioFilePath } = await Promise.race([
+        tts.toFile(dir, text, { rate: "-4%" }),
+        pause(30000).then(() => { throw new Error("timeout"); }),
+      ]);
+      tts.close?.();
+      if (fs.statSync(audioFilePath).size > 2000) return { file: audioFilePath, engine: `Edge ${VOICE}` };
+    } catch (e) {
+      console.warn(`  Edge voice attempt ${attempt} failed (${String(e.message || e).slice(0, 80)})`);
+      await pause(1500 * attempt);
+    }
   }
+  console.warn("  Edge voice unavailable, trying your computer's built-in voice");
   // b) the operating system's own voice
   const wav = base + ".wav";
   try {
